@@ -1,0 +1,6 @@
+repo: 9307cbf67965ae18fc66ee33ff54c3b89d60f935
+node: 7b4d3db98f928be2c317194f936bdad9779b1baf
+branch: default
+latesttag: netanim-3.108
+latesttagdistance: 1
+changessincelatesttag: 1
