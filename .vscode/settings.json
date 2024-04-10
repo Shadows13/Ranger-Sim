@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "*.H": "c",
+        "lr-wpan-mac.h": "cpp",
+        "lr-wpan-phy.h": "cpp",
+        "net-device.h": "cpp",
+        "lr-wpan-module.h": "cpp",
+        "propagation-loss-model.h": "cpp",
+        "ranger-module.h": "cpp",
+        "traced-callback.h": "cpp"
+    }
+}

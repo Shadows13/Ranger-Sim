@@ -1,0 +1,15 @@
+set(base_examples
+    ranger-test
+)
+
+foreach(
+  example
+  ${base_examples}
+)
+  build_lib_example(
+    NAME ${example}
+    SOURCE_FILES ${example}.cc
+    LIBRARIES_TO_LINK ${libranger}
+  )
+endforeach()
+
