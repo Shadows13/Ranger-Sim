@@ -44,8 +44,13 @@ using namespace ns3;
 void
 ReceivePdDataIndication(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi)
 {
-    NS_LOG_UNCOND("At: " << Simulator::Now() << " Received frame size: " << psduLength
-                         << " LQI: " << (uint16_t)lqi);
+    // NS_LOG_UNCOND("At: " << Simulator::Now() << " Received frame size: " << psduLength
+    //                      << " LQI: " << (uint16_t)lqi << std::endl);
+    MessageHeader msgHdr;
+    p->RemoveHeader(msgHdr);
+    std::ostringstream oss;
+    msgHdr.Print(oss); // 将输出重定向到字符串流
+    NS_LOG_UNCOND(oss.str()); // 将捕获的字符串输出到日志
 }
 
 int
@@ -109,25 +114,8 @@ main(int argc, char* argv[])
     Ptr<ConstantPositionMobilityModel> sender1Mobility =
         CreateObject<ConstantPositionMobilityModel>();
     // Configure position 10 m distance
-    sender1Mobility->SetPosition(Vector(0, 130, 0));
+    sender1Mobility->SetPosition(Vector(0, 10, 0));
     dev1->GetPhy()->SetMobility(sender1Mobility);
-
-    // McpsDataConfirmCallback cb0;
-    // cb0 = MakeCallback(&DataConfirm);
-    // dev0->GetMac()->SetMcpsDataConfirmCallback(cb0);
-
-    // McpsDataIndicationCallback cb1;
-    // cb1 = MakeCallback(&DataIndication);
-    // dev0->GetMac()->SetMcpsDataIndicationCallback(cb1);
-
-    // McpsDataConfirmCallback cb2;
-    // cb2 = MakeCallback(&DataConfirm);
-    // dev1->GetMac()->SetMcpsDataConfirmCallback(cb2);
-
-    // McpsDataIndicationCallback cb3;
-    // cb3 = MakeCallback(&DataIndication);
-    // dev1->GetMac()->SetMcpsDataIndicationCallback(cb3);
-
 
     // AsciiTraceHelper ascii;
     // Ptr<OutputStreamWrapper> stream = ascii.CreateFileStream("lr-wpan-data.tr");
@@ -135,24 +123,26 @@ main(int argc, char* argv[])
     // The below should trigger two callbacks when end-to-end data is working
     // 1) DataConfirm callback is called
     // 2) DataIndication callback is called with value of 50
-    Ptr<Packet> p0 = Create<Packet>(50); // 50 bytes of dummy data
-    // McpsDataRequestParams params;
-    // params.m_dstPanId = 0;
-    // if (!extended)
-    // {
-    //     params.m_srcAddrMode = SHORT_ADDR;
-    //     params.m_dstAddrMode = SHORT_ADDR;
-    //     params.m_dstAddr = Mac16Address("00:02");
-    // }
-    // else
-    // {
-    //     params.m_srcAddrMode = EXT_ADDR;
-    //     params.m_dstAddrMode = EXT_ADDR;
-    //     params.m_dstExtAddr = Mac64Address("00:00:00:00:00:00:00:02");
-    // }
-    // params.m_msduHandle = 0;
-    // params.m_txOptions = TX_OPTION_ACK;
-    // //  dev0->GetMac ()->McpsDataRequest (params, p0);
+    Ptr<Packet> p0 = Create<Packet>(0); // 50 bytes of dummy data
+
+    MessageHeader msgHdr;
+    msgHdr.SetMessageType(MessageHeader::NODEINFO_MESSAGE);
+    msgHdr.SetSrcAddress(Ipv4Address("255.255.255.255"));
+
+    MessageHeader::NodeInfo& nodeinfoHdr = msgHdr.GetNodeInfo();
+    nodeinfoHdr.linkNumber = 2;
+    MessageHeader::NodeInfo::LinkMessage lm;
+    lm.linkQuality = 13;
+    lm.neighborAddresses = Ipv4Address("0.0.0.0");
+    nodeinfoHdr.linkMessages.push_back(lm);
+    lm.linkQuality = 12;
+    lm.neighborAddresses = Ipv4Address("0.1.0.0");
+    nodeinfoHdr.linkMessages.push_back(lm);
+    
+    msgHdr.SetMessageLength(msgHdr.GetSerializedSize());
+
+    p0->AddHeader(msgHdr);
+
     dev0->GetPhy()->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_TX_ON);
     dev1->GetPhy()->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_RX_ON);
     Simulator::ScheduleWithContext(1,

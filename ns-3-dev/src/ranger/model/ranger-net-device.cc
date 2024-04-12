@@ -418,4 +418,5 @@ RangerNetDevice::SetChannel(Ptr<SpectrumChannel> channel)
     channel->AddRx(m_phy);
     CompleteConfig();
 }
+
 } // namespace ns3

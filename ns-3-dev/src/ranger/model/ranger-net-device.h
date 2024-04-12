@@ -29,7 +29,6 @@
 
 namespace ns3
 {
-
 class LrWpanPhy;
 
 class RangerNetDevice : public NetDevice
