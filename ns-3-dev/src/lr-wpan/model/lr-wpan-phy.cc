@@ -65,7 +65,7 @@ static const LrWpanPhyDataAndSymbolRates dataSymbolRates[IEEE_802_15_4_INVALID_P
     {250.0, 62.5},
     {100.0, 25.0},
     {250.0, 62.5},
-    {250.0, 62.5},
+    {2000.0, 250.0},
 };
 
 /**
