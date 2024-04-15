@@ -112,6 +112,7 @@ RangerNetDevice::SetAddress(Address address)
     // {
     //     NS_ABORT_MSG("LrWpanNetDevice::SetAddress - address is not of a compatible type");
     // }
+    m_neighborList.SetMainAddress(Ipv4Address::ConvertFrom(address));
 }
 
 Address

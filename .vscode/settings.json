@@ -76,6 +76,9 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "object.h": "cpp",
+        "olsr-repositories.h": "cpp",
+        "header.h": "cpp"
     }
 }

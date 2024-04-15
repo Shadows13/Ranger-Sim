@@ -84,7 +84,7 @@ MessageHeader::Print(std::ostream& os) const
         break;
     }
 
-    os << " Src: " << m_srcAddress;
+    os << " Src: [" << m_srcAddress << "]";
     os << " Length: " << (uint16_t)m_messageLength;
 
     switch (m_messageType)

@@ -21,7 +21,6 @@
 #ifndef RANGER_NWK_HEADER_H
 #define RANGER_NWK_HEADER_H
 
-#include "ranger-repositories.h"
 
 #include "ns3/header.h"
 #include "ns3/ipv4-address.h"

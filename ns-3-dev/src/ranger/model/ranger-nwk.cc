@@ -22,5 +22,25 @@
 
 namespace ns3
 {
+NS_LOG_COMPONENT_DEFINE("RangerNwk");
+NS_OBJECT_ENSURE_REGISTERED(RangerNwk);
+
+TypeId
+RangerNwk::GetTypeId()
+{
+    static TypeId tid = TypeId("ns3::RangerNwk").SetParent<Object>().SetGroupName("Ranger");
+    return tid;
+}
+
+RangerNwk::RangerNwk()
+{
+}
+
+
+RangerNwk::~RangerNwk()
+{
+}
+
+
 
 } // namespace ns3

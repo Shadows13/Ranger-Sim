@@ -21,10 +21,29 @@
 #ifndef RANGER_NWK_H
 #define RANGER_NWK_H
 
+#include "ranger-routing-protocol.h"
+
+#include <ns3/object.h>
 
 namespace ns3
 {
+/**
+ * Ranger Nwk
+ */ 
+class RangerNwk : public Object
+{
+  public:
+    RangerNwk();
+    ~RangerNwk() override;
 
+
+    /**
+     * \brief Get the type ID.
+     * \return the object TypeId
+     */
+    static TypeId GetTypeId();
+
+};
 } // namespace ns3
 
 #endif /* RANGER_NWK_H */

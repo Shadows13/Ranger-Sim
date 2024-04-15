@@ -21,9 +21,78 @@
 #ifndef RANGER_ROUTING_PROTOCOL_H
 #define RANGER_ROUTING_PROTOCOL_H
 
+#include "ranger-nwk-header.h"
+#include "ranger-routing-nblist.h"
+
+
+#include <ns3/object.h>
+#include "ns3/ipv4.h"
+#include "ns3/node.h"
+#include "ns3/object.h"
+#include "ns3/packet.h"
+#include "ns3/timer.h"
+#include "ns3/traced-callback.h"
 
 namespace ns3
 {
+class RangerRoutingProtocol : public Object
+{
+  public:
+    RangerRoutingProtocol();
+    ~RangerRoutingProtocol() override;
+
+    /**
+     * \brief Get the type ID.
+     * \return the object TypeId
+     */
+    static TypeId GetTypeId();
+
+  public:
+    /**
+     * 
+     * Properties of ranger routing protocol
+     * 
+    */
+    
+    /**
+     * \brief Set the RANGER main address to the first address on the indicated interface.
+     *
+     * \param mainAddress IPv4 interface index
+     */
+    void SetMainIAddress(uint32_t mainAddress);
+
+    /**
+     * \brief Print the hold neighbor list.
+     *
+     * \param os std::ostream
+     */
+    void PrintNeighborList(std::ostream& os);
+
+  private:
+    RangerNeighborList m_nbList; // neighbor management
+    Ipv4Address m_mainAddr;
+
+    /**
+     * 
+     * Send/Receive Management
+     * 
+    */
+  public:
+    
+  private:
+    Time m_NodeInfoInterval;
+    Timer m_NodeInfoTimer;
+    /**
+     * \brief Sends a NodeInfo message and reschedules the HELLO timer.
+     */
+    void HelloTimerExpire();
+
+
+
+};
+
+
+
 
 } // namespace ns3
 

@@ -23,7 +23,6 @@
 #define RANGER_NET_DEVICE_H
 
 #include <ns3/lr-wpan-phy.h>
-
 #include <ns3/net-device.h>
 #include <ns3/traced-callback.h>
 

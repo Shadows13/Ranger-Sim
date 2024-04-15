@@ -65,8 +65,8 @@ main(int argc, char* argv[])
     cmd.AddValue("extended", "use extended addressing", extended);
 
     cmd.Parse(argc, argv);
-    LogComponentEnable("LrWpanPhy", LOG_LEVEL_DEBUG);
-    LogComponentEnable("LrWpanPhy", LOG_LEVEL_FUNCTION);
+    //LogComponentEnable("LrWpanPhy", LOG_LEVEL_DEBUG);
+    //LogComponentEnable("LrWpanPhy", LOG_LEVEL_FUNCTION);
 
     // Enable calculation of FCS in the trailers. Only necessary when interacting with real devices
     // or wireshark. GlobalValue::Bind ("ChecksumEnabled", BooleanValue (true));
@@ -130,14 +130,14 @@ main(int argc, char* argv[])
     msgHdr.SetSrcAddress(Ipv4Address("255.255.255.255"));
 
     MessageHeader::NodeInfo& nodeinfoHdr = msgHdr.GetNodeInfo();
-    nodeinfoHdr.linkNumber = 2;
-    MessageHeader::NodeInfo::LinkMessage lm;
-    lm.linkQuality = 13;
-    lm.neighborAddresses = Ipv4Address("0.0.0.0");
-    nodeinfoHdr.linkMessages.push_back(lm);
-    lm.linkQuality = 12;
-    lm.neighborAddresses = Ipv4Address("0.1.0.0");
-    nodeinfoHdr.linkMessages.push_back(lm);
+    nodeinfoHdr.linkNumber = 0;
+    // MessageHeader::NodeInfo::LinkMessage lm;
+    // lm.linkQuality = 13;
+    // lm.neighborAddresses = Ipv4Address("0.0.0.0");
+    // nodeinfoHdr.linkMessages.push_back(lm);
+    // lm.linkQuality = 12;
+    // lm.neighborAddresses = Ipv4Address("0.1.0.0");
+    // nodeinfoHdr.linkMessages.push_back(lm);
     
     msgHdr.SetMessageLength(msgHdr.GetSerializedSize());
 
