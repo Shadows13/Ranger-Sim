@@ -207,6 +207,25 @@ class MessageHeader : public Header
     }
 
 };
+
+typedef std::vector<MessageHeader> MessageHeaderList;
+
+inline std::ostream&
+operator<<(std::ostream& os, const MessageHeaderList& messages)
+{
+    os << "[";
+    for (auto messageIter = messages.begin(); messageIter != messages.end(); messageIter++)
+    {
+        messageIter->Print(os);
+        if (messageIter + 1 != messages.end())
+        {
+            os << ", ";
+        }
+    }
+    os << "]";
+    return os;
+}
+
 } // namespace ns3
 
 #endif /* RANGER_NWK_HEADER_H */

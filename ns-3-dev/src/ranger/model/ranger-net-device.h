@@ -22,6 +22,8 @@
 #ifndef RANGER_NET_DEVICE_H
 #define RANGER_NET_DEVICE_H
 
+#include <ns3/ranger-routing-protocol.h>
+
 #include <ns3/lr-wpan-phy.h>
 #include <ns3/net-device.h>
 #include <ns3/traced-callback.h>
@@ -77,6 +79,13 @@ class RangerNetDevice : public NetDevice
     // void SetCsmaCa(Ptr<LrWpanCsmaCa> csmaca);
 
     /**
+     * Get the PHY used by this NetDevice.
+     *
+     * \return the PHY object
+     */
+    void SetRoutingProtocol(Ptr<RangerRoutingProtocol> RoutingProtocol);
+
+    /**
      * Set the channel to which the NetDevice, and therefore the PHY, should be
      * attached to.
      *
@@ -104,6 +113,13 @@ class RangerNetDevice : public NetDevice
     //  * \return the CSMA/CA implementation object
     //  */
     // Ptr<LrWpanCsmaCa> GetCsmaCa() const;
+
+    /**
+     * Get the PHY used by this NetDevice.
+     *
+     * \return the PHY object
+     */
+    Ptr<RangerRoutingProtocol> GetRoutingProtocol() const;
 
     // From class NetDevice
     void SetIfIndex(const uint32_t index) override;
@@ -254,6 +270,11 @@ class RangerNetDevice : public NetDevice
     // Ptr<LrWpanCsmaCa> m_csmaca;
 
     /**
+     * The Routing Protocol for this NetDevice.
+     */
+    Ptr<RangerRoutingProtocol> m_routingProtocol;
+
+    /**
      * The node associated with this NetDevice.
      */
     Ptr<Node> m_node;
@@ -296,7 +317,7 @@ class RangerNetDevice : public NetDevice
     //  * According to \RFC{4944} the pseudo-MAC is YYYY:0000:XXXX (with U/L bit set to local)
     //  * According to \RFC{6282} the pseudo-MAC is 0200:0000:XXXX
     //  */
-    // PseudoMacAddressMode_e m_pseudoMacMode;
+    Ipv4Address m_mainAddress;
 };
 
 

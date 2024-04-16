@@ -21,6 +21,7 @@
  */
 #include "ranger-net-device.h"
 
+#include <ns3/ipv4-address.h>
 #include <ns3/abort.h>
 #include <ns3/boolean.h>
 #include <ns3/log.h>
@@ -48,12 +49,14 @@ RangerNetDevice::GetTypeId()
     return tid;
 }
 
-RangerNetDevice::RangerNetDevice()
+RangerNetDevice::RangerNetDevice() : m_configComplete(false)
 {
     NS_LOG_FUNCTION(this);
     // m_mac = CreateObject<LrWpanMac>();
     m_phy = CreateObject<LrWpanPhy>();
     //m_csmaca = CreateObject<LrWpanCsmaCa>();
+    m_routingProtocol = CreateObject<RangerRoutingProtocol>();
+    CompleteConfig();
 }
 
 RangerNetDevice::~RangerNetDevice()
@@ -86,33 +89,8 @@ void
 RangerNetDevice::SetAddress(Address address)
 {
     NS_LOG_FUNCTION(this);
-    // if (Mac16Address::IsMatchingType(address))
-    // {
-    //     m_mac->SetShortAddress(Mac16Address::ConvertFrom(address));
-    // }
-    // else if (Mac64Address::IsMatchingType(address))
-    // {
-    //     m_mac->SetExtendedAddress(Mac64Address::ConvertFrom(address));
-    // }
-    // else if (Mac48Address::IsMatchingType(address))
-    // {
-    //     uint8_t buf[6];
-    //     Mac48Address addr = Mac48Address::ConvertFrom(address);
-    //     addr.CopyTo(buf);
-    //     Mac16Address addr16;
-    //     addr16.CopyFrom(buf + 4);
-    //     m_mac->SetShortAddress(addr16);
-    //     uint16_t panId;
-    //     panId = buf[0];
-    //     panId <<= 8;
-    //     panId |= buf[1];
-    //     m_mac->SetPanId(panId);
-    // }
-    // else
-    // {
-    //     NS_ABORT_MSG("LrWpanNetDevice::SetAddress - address is not of a compatible type");
-    // }
-    m_neighborList.SetMainAddress(Ipv4Address::ConvertFrom(address));
+    m_routingProtocol->SetMainIAddress(Ipv4Address::ConvertFrom(address));
+    CompleteConfig();
 }
 
 Address
@@ -125,7 +103,7 @@ RangerNetDevice::GetAddress() const
     //     return m_mac->GetExtendedAddress();
     // }
 
-    Mac48Address pseudoAddress = 0;
+    Ipv4Address pseudoAddress = Ipv4Address("00.00.00.00");
         // BuildPseudoMacAddress(m_mac->GetPanId(), m_mac->GetShortAddress());
 
     return pseudoAddress;
@@ -358,6 +336,7 @@ RangerNetDevice::DoInitialize()
 {
     NS_LOG_FUNCTION(this);
     m_phy->Initialize();
+    m_routingProtocol->Initialize();
     // m_mac->Initialize();
     NetDevice::DoInitialize();
 }
@@ -367,20 +346,21 @@ void
 RangerNetDevice::CompleteConfig()
 {
     NS_LOG_FUNCTION(this);
-    // if (!m_mac || !m_phy || !m_csmaca || !m_node || m_configComplete)
-    // {
-    //     return;
-    // }
+    if (!m_phy || !m_routingProtocol || m_configComplete)
+    {
+        return;
+    }
+    m_routingProtocol->SetSendCallback(MakeCallback(&LrWpanPhy::PdDataRequest, m_phy));
     // m_mac->SetPhy(m_phy);
     // m_mac->SetCsmaCa(m_csmaca);
     // m_mac->SetMcpsDataIndicationCallback(MakeCallback(&LrWpanNetDevice::McpsDataIndication, this));
     // m_csmaca->SetMac(m_mac);
 
-    // Ptr<LrWpanErrorModel> model = CreateObject<LrWpanErrorModel>();
-    // m_phy->SetErrorModel(model);
-    // m_phy->SetDevice(this);
+    Ptr<LrWpanErrorModel> model = CreateObject<LrWpanErrorModel>();
+    m_phy->SetErrorModel(model);
+    m_phy->SetDevice(this);
 
-    // m_phy->SetPdDataIndicationCallback(MakeCallback(&LrWpanMac::PdDataIndication, m_mac));
+    m_phy->SetPdDataIndicationCallback(MakeCallback(&RangerRoutingProtocol::ReceivePacket, m_routingProtocol));
     // m_phy->SetPdDataConfirmCallback(MakeCallback(&LrWpanMac::PdDataConfirm, m_mac));
     // m_phy->SetPlmeEdConfirmCallback(MakeCallback(&LrWpanMac::PlmeEdConfirm, m_mac));
     // m_phy->SetPlmeGetAttributeConfirmCallback(
@@ -392,6 +372,7 @@ RangerNetDevice::CompleteConfig()
 
     // m_csmaca->SetLrWpanMacStateCallback(MakeCallback(&LrWpanMac::SetLrWpanMacState, m_mac));
     // m_phy->SetPlmeCcaConfirmCallback(MakeCallback(&LrWpanCsmaCa::PlmeCcaConfirm, m_csmaca));
+    
     m_configComplete = true;
 }
 
@@ -410,6 +391,13 @@ RangerNetDevice::SetPhy(Ptr<LrWpanPhy> phy)
     CompleteConfig();
 }
 
+void
+RangerNetDevice::SetRoutingProtocol(Ptr<RangerRoutingProtocol> RoutingProtocol)
+{
+    NS_LOG_FUNCTION(this);
+    m_routingProtocol = RoutingProtocol;
+    CompleteConfig();
+}
 
 void
 RangerNetDevice::SetChannel(Ptr<SpectrumChannel> channel)

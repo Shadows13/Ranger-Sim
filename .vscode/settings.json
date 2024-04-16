@@ -79,6 +79,9 @@
         "variant": "cpp",
         "object.h": "cpp",
         "olsr-repositories.h": "cpp",
-        "header.h": "cpp"
+        "header.h": "cpp",
+        "node.h": "cpp",
+        "ipv4.h": "cpp",
+        "ipv4-address.h": "cpp"
     }
 }

@@ -149,6 +149,7 @@ RangerNeighborList::UpdateNeighborNodeStatus(Ipv4Address SrcAddress, MessageHead
         nbIns.lqi = 255;
         nbIns.refreshTime = Simulator::Now();
         nbIns.twoHopNodeInfo = nodeinfoHdr.linkMessages;
+        m_nbStatus.push_back(nbIns);
     }
 
 }
@@ -186,12 +187,23 @@ RangerNeighborList::FindNeighbor(Ipv4Address TargetAddr, uint8_t& index)
 }
 
 void
+RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
+    header.linkNumber = m_nbStatus.size();
+    for(std::size_t i = 0; i < m_nbStatus.size(); i++) {
+        MessageHeader::NodeInfo::LinkMessage linkMsg;
+        linkMsg.neighborAddresses = m_nbStatus[i].neighborMainAddr;
+        linkMsg.linkQuality = m_nbStatus[i].lqi;
+        header.linkMessages.push_back(linkMsg);
+    }
+}
+
+void
 RangerNeighborList::Print(std::ostream& os) const
 {
     os << "----------------[" << m_mainAddr << "]----------------" << std::endl;
     for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end(); iter++) {
         os << "[" << iter->neighborMainAddr << "]";
-        os << "(" << iter->lqi << "):";
+        os << "(" << (uint16_t)iter->lqi << "):";
         iter->Print(os);
     }
     os << "----------------[" << m_mainAddr << "]----------------" << std::endl;

@@ -65,9 +65,9 @@ main(int argc, char* argv[])
     cmd.AddValue("extended", "use extended addressing", extended);
 
     cmd.Parse(argc, argv);
-    //LogComponentEnable("LrWpanPhy", LOG_LEVEL_DEBUG);
+    // LogComponentEnable("RangerNetDevice", LOG_LEVEL_FUNCTION);
     //LogComponentEnable("LrWpanPhy", LOG_LEVEL_FUNCTION);
-    LogComponentEnable("RangerRoutingProtocol", LOG_LEVEL_FUNCTION);
+    LogComponentEnable("RangerRoutingProtocol", LOG_LEVEL_INFO);
 
     // Enable calculation of FCS in the trailers. Only necessary when interacting with real devices
     // or wireshark. GlobalValue::Bind ("ChecksumEnabled", BooleanValue (true));
@@ -79,10 +79,12 @@ main(int argc, char* argv[])
     Ptr<RangerNetDevice> dev0 = CreateObject<RangerNetDevice>();
     Ptr<RangerNetDevice> dev1 = CreateObject<RangerNetDevice>();
 
-    Ptr<LrWpanErrorModel> model = CreateObject<LrWpanErrorModel>();
-    dev0->GetPhy()->SetErrorModel(model);
-    dev1->GetPhy()->SetErrorModel(model);
+    // Ptr<LrWpanErrorModel> model = CreateObject<LrWpanErrorModel>();
+    // dev0->GetPhy()->SetErrorModel(model);
+    // dev1->GetPhy()->SetErrorModel(model);
 
+    dev0->SetAddress(Ipv4Address("255.255.255.255"));
+    dev1->SetAddress(Ipv4Address("255.255.255.254"));
 
     // Each device must be attached to the same channel
     Ptr<SingleModelSpectrumChannel> channel = CreateObject<SingleModelSpectrumChannel>();
@@ -124,37 +126,36 @@ main(int argc, char* argv[])
     // The below should trigger two callbacks when end-to-end data is working
     // 1) DataConfirm callback is called
     // 2) DataIndication callback is called with value of 50
-    Ptr<Packet> p0 = Create<Packet>(0); // 50 bytes of dummy data
+    // Ptr<Packet> p0 = Create<Packet>(0); // 50 bytes of dummy data
 
-    MessageHeader msgHdr;
-    msgHdr.SetMessageType(MessageHeader::NODEINFO_MESSAGE);
-    msgHdr.SetSrcAddress(Ipv4Address("255.255.255.255"));
+    // MessageHeader msgHdr;
+    // msgHdr.SetMessageType(MessageHeader::NODEINFO_MESSAGE);
+    // msgHdr.SetSrcAddress(Ipv4Address("255.255.255.255"));
 
-    MessageHeader::NodeInfo& nodeinfoHdr = msgHdr.GetNodeInfo();
-    nodeinfoHdr.linkNumber = 0;
-    // MessageHeader::NodeInfo::LinkMessage lm;
-    // lm.linkQuality = 13;
-    // lm.neighborAddresses = Ipv4Address("0.0.0.0");
-    // nodeinfoHdr.linkMessages.push_back(lm);
-    // lm.linkQuality = 12;
-    // lm.neighborAddresses = Ipv4Address("0.1.0.0");
-    // nodeinfoHdr.linkMessages.push_back(lm);
+    // MessageHeader::NodeInfo& nodeinfoHdr = msgHdr.GetNodeInfo();
+    // nodeinfoHdr.linkNumber = 0;
+    // // MessageHeader::NodeInfo::LinkMessage lm;
+    // // lm.linkQuality = 13;
+    // // lm.neighborAddresses = Ipv4Address("0.0.0.0");
+    // // nodeinfoHdr.linkMessages.push_back(lm);
+    // // lm.linkQuality = 12;
+    // // lm.neighborAddresses = Ipv4Address("0.1.0.0");
+    // // nodeinfoHdr.linkMessages.push_back(lm);
     
-    msgHdr.SetMessageLength(msgHdr.GetSerializedSize());
+    // msgHdr.SetMessageLength(msgHdr.GetSerializedSize());
 
-    p0->AddHeader(msgHdr);
+    // p0->AddHeader(msgHdr);
 
     dev0->GetPhy()->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_TX_ON);
     dev1->GetPhy()->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_RX_ON);
-    Simulator::ScheduleWithContext(1,
-                                Seconds(0.1),
-                                &LrWpanPhy::PdDataRequest,
-                                dev0->GetPhy(),
-                                p0->GetSize(),
-                                p0);
+    // Simulator::ScheduleWithContext(1,
+    //                             Seconds(0.1),
+    //                             &LrWpanPhy::PdDataRequest,
+    //                             dev0->GetPhy(),
+    //                             p0->GetSize(),
+    //                             p0);
 
-    dev1->GetPhy()->SetPdDataIndicationCallback(MakeCallback(&ReceivePdDataIndication));
-
+    // dev1->GetPhy()->SetPdDataIndicationCallback(MakeCallback(&ReceivePdDataIndication));
     // // Send a packet back at time 2 seconds
     // Ptr<Packet> p2 = Create<Packet>(60); // 60 bytes of dummy data
     // if (!extended)

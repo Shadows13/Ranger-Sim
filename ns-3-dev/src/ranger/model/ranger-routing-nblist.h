@@ -161,17 +161,25 @@ class RangerNeighborList
      * \param index target address's index in m_nbStatus.
      */
     bool FindNeighbor(Ipv4Address TargetAddr, uint8_t& index);
+
+    /**
+     * Get the Neighbor Node Info.
+     * \param header the packet header.
+     */
+    void GetNeighborNodeInfo(MessageHeader::NodeInfo& header);
+
     /**
      * Pick up the assign forward node for a forward packet and edit the header
      * \param SrcAddress prev node address.
      * \param header the packet header.
      */
-    void SetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader& header);
+    void GetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader& header);
+    
     /**
      * Pick up the assign forward node for a source packet and edit the header
      * \param header the packet header.
      */
-    void SetSourceAssignNeighbor(MessageHeader& header);
+    void GetSourceAssignNeighbor(MessageHeader& header);
 
     // 
     /**
