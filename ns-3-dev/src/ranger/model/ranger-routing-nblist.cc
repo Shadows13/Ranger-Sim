@@ -158,18 +158,28 @@ void
 RangerNeighborList::RefreshNeighborNodeStatus(void)
 {
     Time CurrTime = Simulator::Now();
-    for(std::size_t i = 0; i < m_nbStatus.size(); i++) {
-        // > : too long not to get a new nodeinfo packet, mark as none into laiBuffer
-        if(CurrTime - m_nbStatus[i].refreshTime > m_refreshInterval) {
-            m_nbStatus[i].lqiBuffer.insert(false);
+    for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end();) {
+        if(CurrTime - iter->refreshTime > m_refreshInterval) {
+            iter->lqiBuffer.insert(false);
         } else {
-            m_nbStatus[i].lqiBuffer.insert(true);
+            iter->lqiBuffer.insert(true);
         }
-        m_nbStatus[i].lqi = m_nbStatus[i].lqiBuffer.calLqi();
+        iter->lqi = iter->lqiBuffer.calLqi();
+
+        // update status
+        if(iter->lqi > 170) {
+            iter->status = NeighborStatus::STATUS_STABLE;
+            iter++;
+        } else if(iter->lqi > 75) {
+            iter->status = NeighborStatus::STATUS_UNSTABLE;
+            iter++;
+        } else if (iter->lqi > 0) {
+            iter->status = NeighborStatus::STATUS_NONE;
+            iter++;
+        } else {
+            iter = m_nbStatus.erase(iter);
+        }
     }
-    std::ostringstream oss;
-    Print(oss); // 将输出重定向到字符串流
-    NS_LOG_UNCOND(oss.str()); // 将捕获的字符串输出到日志
 }
 
 bool
@@ -192,9 +202,19 @@ RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
     for(std::size_t i = 0; i < m_nbStatus.size(); i++) {
         MessageHeader::NodeInfo::LinkMessage linkMsg;
         linkMsg.neighborAddresses = m_nbStatus[i].neighborMainAddr;
-        linkMsg.linkQuality = m_nbStatus[i].lqi;
+        linkMsg.linkStatus = m_nbStatus[i].status;
         header.linkMessages.push_back(linkMsg);
     }
+}
+
+void
+RangerNeighborList::GetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader::AudioData& header) {
+
+}
+
+void
+RangerNeighborList::GetSourceAssignNeighbor(MessageHeader::AudioData& header) {
+    
 }
 
 void
@@ -203,7 +223,7 @@ RangerNeighborList::Print(std::ostream& os) const
     os << "----------------[" << m_mainAddr << "]----------------" << std::endl;
     for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end(); iter++) {
         os << "[" << iter->neighborMainAddr << "]";
-        os << "(" << (uint16_t)iter->lqi << "):";
+        os << "(" << (uint16_t)iter->lqi << "-" << (uint16_t)iter->status << "):";
         iter->Print(os);
     }
     os << "----------------[" << m_mainAddr << "]----------------" << std::endl;

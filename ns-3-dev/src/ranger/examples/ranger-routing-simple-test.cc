@@ -24,16 +24,18 @@
  * Trace Phy state changes, and Mac DataIndication and DataConfirm events
  * to stdout
  */
-#include <ns3/constant-position-mobility-model.h>
+#include <ns3/mobility-module.h>
 #include <ns3/core-module.h>
-#include <ns3/log.h>
 #include <ns3/ranger-module.h>
 #include <ns3/lr-wpan-module.h>
+#include <ns3/netanim-module.h>
+#include <ns3/log.h>
 #include <ns3/packet.h>
+#include <ns3/single-model-spectrum-channel.h>
 #include <ns3/propagation-delay-model.h>
 #include <ns3/propagation-loss-model.h>
 #include <ns3/simulator.h>
-#include <ns3/single-model-spectrum-channel.h>
+
 
 #include <ns3/test.h>
 
@@ -69,6 +71,10 @@ main(int argc, char* argv[])
     //LogComponentEnable("LrWpanPhy", LOG_LEVEL_FUNCTION);
     LogComponentEnable("RangerRoutingProtocol", LOG_LEVEL_INFO);
 
+
+    double txPower = 20;
+    uint32_t channelNumber = 11;
+    double rxSensitivity = -93; // dBm
     // Enable calculation of FCS in the trailers. Only necessary when interacting with real devices
     // or wireshark. GlobalValue::Bind ("ChecksumEnabled", BooleanValue (true));
 
@@ -110,69 +116,64 @@ main(int argc, char* argv[])
     //                              std::string("phy1"),
     //                              MakeCallback(&StateChangeNotification));
 
-    Ptr<ConstantPositionMobilityModel> sender0Mobility =
-        CreateObject<ConstantPositionMobilityModel>();
-    sender0Mobility->SetPosition(Vector(0, 0, 0));
-    dev0->GetPhy()->SetMobility(sender0Mobility);
-    Ptr<ConstantPositionMobilityModel> sender1Mobility =
-        CreateObject<ConstantPositionMobilityModel>();
-    // Configure position 10 m distance
-    sender1Mobility->SetPosition(Vector(0, 10, 0));
-    dev1->GetPhy()->SetMobility(sender1Mobility);
+    // Ptr<ConstantPositionMobilityModel> mob0 = CreateObject<ConstantPositionMobilityModel>();
+    // //dev0->GetPhy()->SetMobility(mob0);
+    // Ptr<ConstantPositionMobilityModel> mob1 = CreateObject<ConstantPositionMobilityModel>();
+    // //dev1->GetPhy()->SetMobility(mob1);
+    // mob0->SetPosition(Vector(0, 0, 0));
+    // mob1->SetPosition(Vector(0, 10, 0));
 
-    // AsciiTraceHelper ascii;
-    // Ptr<OutputStreamWrapper> stream = ascii.CreateFileStream("lr-wpan-data.tr");
+    MobilityHelper mob0;
+    MobilityHelper mob1;
+    mob0.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
+                                "Mode", StringValue("Time"),
+                                "Time", StringValue("2s"),
+                                "Speed", StringValue("ns3::ConstantRandomVariable[Constant=5.0]"),
+                                "Bounds", RectangleValue(Rectangle(-50, 50, -50, 50)));    
+    mob0.Install(n0);
+    mob1.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
+                                "Mode", StringValue("Time"),
+                                "Time", StringValue("2s"),
+                                "Speed", StringValue("ns3::ConstantRandomVariable[Constant=5.0]"),
+                                "Bounds", RectangleValue(Rectangle(-50, 50, -50, 50)));
+    mob1.Install(n1);
 
-    // The below should trigger two callbacks when end-to-end data is working
-    // 1) DataConfirm callback is called
-    // 2) DataIndication callback is called with value of 50
-    // Ptr<Packet> p0 = Create<Packet>(0); // 50 bytes of dummy data
-
-    // MessageHeader msgHdr;
-    // msgHdr.SetMessageType(MessageHeader::NODEINFO_MESSAGE);
-    // msgHdr.SetSrcAddress(Ipv4Address("255.255.255.255"));
-
-    // MessageHeader::NodeInfo& nodeinfoHdr = msgHdr.GetNodeInfo();
-    // nodeinfoHdr.linkNumber = 0;
-    // // MessageHeader::NodeInfo::LinkMessage lm;
-    // // lm.linkQuality = 13;
-    // // lm.neighborAddresses = Ipv4Address("0.0.0.0");
-    // // nodeinfoHdr.linkMessages.push_back(lm);
-    // // lm.linkQuality = 12;
-    // // lm.neighborAddresses = Ipv4Address("0.1.0.0");
-    // // nodeinfoHdr.linkMessages.push_back(lm);
-    
-    // msgHdr.SetMessageLength(msgHdr.GetSerializedSize());
-
-    // p0->AddHeader(msgHdr);
+    LrWpanSpectrumValueHelper svh;
+    Ptr<SpectrumValue> psd = svh.CreateTxPowerSpectralDensity(txPower, channelNumber);
+    dev0->GetPhy()->SetTxPowerSpectralDensity(psd);
+    // Set Rx sensitivity of the receiving device
+    dev1->GetPhy()->SetRxSensitivity(rxSensitivity);
 
     dev0->GetPhy()->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_TX_ON);
     dev1->GetPhy()->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_RX_ON);
-    // Simulator::ScheduleWithContext(1,
-    //                             Seconds(0.1),
-    //                             &LrWpanPhy::PdDataRequest,
-    //                             dev0->GetPhy(),
-    //                             p0->GetSize(),
-    //                             p0);
 
-    // dev1->GetPhy()->SetPdDataIndicationCallback(MakeCallback(&ReceivePdDataIndication));
-    // // Send a packet back at time 2 seconds
-    // Ptr<Packet> p2 = Create<Packet>(60); // 60 bytes of dummy data
-    // if (!extended)
-    // {
-    //     params.m_dstAddr = Mac16Address("00:01");
-    // }
-    // else
-    // {
-    //     params.m_dstExtAddr = Mac64Address("00:00:00:00:00:00:00:01");
-    // }
-    // Simulator::ScheduleWithContext(2,
-    //                                Seconds(2.0),
-    //                                &LrWpanMac::McpsDataRequest,
-    //                                dev1->GetMac(),
-    //                                params,
-    //                                p2);
 
+    // for(int i = 0; i < 1000; i++) {
+    //     Simulator::ScheduleWithContext(1,
+    //                                 Seconds(0.1 * i),  // 每0.5秒触发一次
+    //                                 &RangerRoutingProtocol::SourceAudioDataRequest,
+    //                                 dev0->GetRoutingProtocol(),
+    //                                 80);
+    // }
+
+    // for (int j = 10; j < 800; j += 10)
+    // {
+    //     // for (int i = 0; i < 1000; i++)
+    //     // {
+    //     //     p = Create<Packet>(packetSize);
+    //     //     Simulator::Schedule(Seconds(i), &LrWpanMac::McpsDataRequest, dev0->GetMac(), params, p);
+    //     // }
+    //     Simulator::ScheduleWithContext(1,
+    //                                 Seconds(30.0 * (j / 10)),  // 每0.5秒触发一次
+    //                                 &MobilityModel::SetPosition,
+    //                                 mob1,
+    //                                 Vector(0, j, 0));
+    //     //mob1->SetPosition(Vector(0, j, 0));
+    // }
+
+    // Schedule a data request
+    AnimationInterface anim ("animation.xml");
+    Simulator::Stop(Seconds(1000.0));
     Simulator::Run();
 
     Simulator::Destroy();

@@ -103,7 +103,7 @@ struct NeighborStatus
     void Print(std::ostream& os) const {
         for(auto i = 0u; i < twoHopNodeInfo.size(); i++) {
             os << " [" << twoHopNodeInfo[i].neighborAddresses << "]";
-            os << "(" << (uint16_t)twoHopNodeInfo[i].linkQuality << ")";
+            os << "(" << (uint16_t)twoHopNodeInfo[i].linkStatus << ")";
         }
         os << std::endl;
     }
@@ -173,13 +173,13 @@ class RangerNeighborList
      * \param SrcAddress prev node address.
      * \param header the packet header.
      */
-    void GetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader& header);
+    void GetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader::AudioData& header);
     
     /**
      * Pick up the assign forward node for a source packet and edit the header
      * \param header the packet header.
      */
-    void GetSourceAssignNeighbor(MessageHeader& header);
+    void GetSourceAssignNeighbor(MessageHeader::AudioData& header);
 
     // 
     /**

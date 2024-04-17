@@ -10,7 +10,9 @@ foreach(
   build_lib_example(
     NAME ${example}
     SOURCE_FILES ${example}.cc
-    LIBRARIES_TO_LINK ${libranger}
+    LIBRARIES_TO_LINK 
+      ${libranger}
+      ${libnetanim}
   )
 endforeach()
 

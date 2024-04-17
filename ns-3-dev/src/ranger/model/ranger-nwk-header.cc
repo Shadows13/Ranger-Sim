@@ -68,6 +68,9 @@ MessageHeader::GetSerializedSize() const
     case NODEINFO_MESSAGE:
         size += m_message.nodeInfo.GetSerializedSize();
         break;
+    case AUDIODATA_MESSAGE:
+        size += m_message.audioData.GetSerializedSize();
+        break;
     default:
         NS_ASSERT(false);
     }
@@ -82,6 +85,9 @@ MessageHeader::Print(std::ostream& os) const
     case NODEINFO_MESSAGE:
         os << "type: NODEINFO";
         break;
+    case AUDIODATA_MESSAGE:
+        os << "type: AUDIODATA";
+        break;
     }
 
     os << " Src: [" << m_srcAddress << "]";
@@ -91,6 +97,9 @@ MessageHeader::Print(std::ostream& os) const
     {
     case NODEINFO_MESSAGE:
         m_message.nodeInfo.Print(os);
+        break;
+    case AUDIODATA_MESSAGE:
+        m_message.audioData.Print(os);
         break;
     default:
         NS_ASSERT(false);
@@ -110,6 +119,9 @@ MessageHeader::Serialize(Buffer::Iterator start) const
     case NODEINFO_MESSAGE:
         m_message.nodeInfo.Serialize(iter);
         break;
+    case AUDIODATA_MESSAGE:
+        m_message.audioData.Serialize(iter);
+        break;
     default:
         NS_ASSERT(false);
     }
@@ -120,15 +132,20 @@ MessageHeader::Deserialize(Buffer::Iterator start)
 {
     uint32_t size;
     Buffer::Iterator iter = start;
+    
     m_messageType = (MessageType)iter.ReadU8();
-    NS_ASSERT(m_messageType == NODEINFO_MESSAGE);
     m_srcAddress = Ipv4Address(iter.ReadNtohU32());
     m_messageLength = iter.ReadU8();
     size = RANGER_MSG_HEADER_SIZE;
+    NS_ASSERT(m_messageType == NODEINFO_MESSAGE || m_messageType == AUDIODATA_MESSAGE);
+
     switch (m_messageType)
     {
     case NODEINFO_MESSAGE:
         size += m_message.nodeInfo.Deserialize(iter, m_messageLength - RANGER_MSG_HEADER_SIZE);
+        break;
+    case AUDIODATA_MESSAGE:
+        size += m_message.audioData.Deserialize(iter, m_messageLength - RANGER_MSG_HEADER_SIZE);
         break;
     default:
         NS_ASSERT(false);
@@ -136,7 +153,8 @@ MessageHeader::Deserialize(Buffer::Iterator start)
     return size;
 }
 
-// ---------------- OLSR NODEINFO Message -------------------------------
+
+// ---------------- RANGER NODEINFO Message -------------------------------
 
 uint32_t
 MessageHeader::NodeInfo::GetSerializedSize() const
@@ -152,7 +170,7 @@ MessageHeader::NodeInfo::Print(std::ostream& os) const
 {
     os << " LinkNumber: (" << (uint16_t)linkNumber << ")";
     for(auto iter = linkMessages.begin(); iter != linkMessages.end(); iter++) {
-        os << " [" << iter->neighborAddresses << "-" << (uint16_t)iter->linkQuality << "]";
+        os << " [" << iter->neighborAddresses << "-" << (uint16_t)iter->linkStatus << "]";
     }
 }
 
@@ -166,7 +184,7 @@ MessageHeader::NodeInfo::Serialize(Buffer::Iterator start) const
     {
         const LinkMessage& lm = *i;
 
-        iter.WriteU8(lm.linkQuality);
+        iter.WriteU8(lm.linkStatus);
         iter.WriteHtonU32(lm.neighborAddresses.Get());
     }
 }
@@ -184,11 +202,68 @@ MessageHeader::NodeInfo::Deserialize(Buffer::Iterator start, uint32_t messageSiz
 
     for(int i = 0; i < linkNumber; i++) {
         LinkMessage lm;
-        lm.linkQuality = iter.ReadU8();
+        lm.linkStatus = iter.ReadU8();
         lm.neighborAddresses = Ipv4Address(iter.ReadNtohU32());
         this->linkMessages.push_back(lm);
     }
 
+
+    return messageSize;
+}
+
+// ---------------- RANGER AUDIODATA Message -------------------------------
+
+uint32_t
+MessageHeader::AudioData::GetSerializedSize() const
+{
+    uint32_t size = 7; // OriAddr For 4 Bytes/AudioSeq For 1 Bytes/AudioSize For 1 Bytes/AssignNum For 1 Bytes
+    size += AssignNum * (IPV4_ADDRESS_SIZE);
+
+    return size;
+}
+
+void
+MessageHeader::AudioData::Print(std::ostream& os) const
+{
+    os<<" OriAddr: [" << OriAddr << "](" << (uint16_t)AudioSeq << "-" << (uint16_t)AudioSize << ")";
+    os << " Assign: (" << (uint16_t)AssignNum << ")";
+    for(auto iter = AssignNeighbor.begin(); iter != AssignNeighbor.end(); iter++) {
+        os << " [" << *iter << "]";
+    }
+}
+
+void
+MessageHeader::AudioData::Serialize(Buffer::Iterator start) const
+{
+    Buffer::Iterator iter = start;
+    iter.WriteHtonU32(OriAddr.Get());
+    iter.WriteU8(AudioSeq); 
+    iter.WriteU8(AudioSize); 
+    iter.WriteU8(AssignNum); 
+    for (auto i = this->AssignNeighbor.begin(); i != this->AssignNeighbor.end(); i++)
+    {   
+        Ipv4Address Address = *i;
+        iter.WriteHtonU32(Address.Get());
+    }
+}
+
+uint32_t
+MessageHeader::AudioData::Deserialize(Buffer::Iterator start, uint32_t messageSize)
+{
+    Buffer::Iterator iter = start;
+
+    NS_ASSERT(messageSize >= 0);
+
+    this->AssignNeighbor.clear();
+
+    this->OriAddr = Ipv4Address(iter.ReadNtohU32());
+    this->AudioSeq = iter.ReadU8();
+    this->AudioSize = iter.ReadU8();
+    this->AssignNum = iter.ReadU8();
+
+    for(int i = 0; i < AssignNum; i++) {
+        this->AssignNeighbor.push_back(Ipv4Address(iter.ReadNtohU32()));
+    }
 
     return messageSize;
 }

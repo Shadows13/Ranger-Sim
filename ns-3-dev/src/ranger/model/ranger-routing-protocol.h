@@ -23,6 +23,7 @@
 
 #include "ranger-nwk-header.h"
 #include "ranger-routing-nblist.h"
+#include "ranger-audio-management.h"
 
 #include <ns3/lr-wpan-module.h>
 
@@ -38,6 +39,7 @@ namespace ns3
 {
 
 typedef Callback<void, uint32_t, Ptr<Packet>> RangerRoutingProtocolSendCallback;
+
 
 class RangerRoutingProtocol : public Object
 {
@@ -76,10 +78,14 @@ class RangerRoutingProtocol : public Object
      */
     void PrintNeighborList(std::ostream& os);
 
+
   private:
     RangerNeighborList m_nbList; // neighbor management
     Ipv4Address m_mainAddr;
+    RangerAudioManagement m_audioManagement;
 
+    // for record
+    // RangerRecorder m_record;
 
   public:
     /**
@@ -90,6 +96,8 @@ class RangerRoutingProtocol : public Object
     void ReceivePacket(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi);  // receive packet
     void SendPacket(const uint32_t psduLength, Ptr<Packet> p);     // send packet
     void SetSendCallback(RangerRoutingProtocolSendCallback cb);        // set the send callback
+
+    void SourceAudioDataRequest(const uint32_t audioLen);        // send audio data request
 
   private:
     // A list of pending messages which are buffered awaiting for being sent.

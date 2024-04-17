@@ -82,6 +82,9 @@
         "header.h": "cpp",
         "node.h": "cpp",
         "ipv4.h": "cpp",
-        "ipv4-address.h": "cpp"
-    }
+        "ipv4-address.h": "cpp",
+        "ranger-audio-management.h": "cpp",
+        "core-module.h": "cpp"
+    },
+    "cmake.sourceDirectory": "/home/shadow13/Desktop/Ranger-Sim/ns-3-dev"
 }

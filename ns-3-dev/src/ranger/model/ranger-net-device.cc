@@ -399,6 +399,12 @@ RangerNetDevice::SetRoutingProtocol(Ptr<RangerRoutingProtocol> RoutingProtocol)
     CompleteConfig();
 }
 
+Ptr<RangerRoutingProtocol>
+RangerNetDevice::GetRoutingProtocol() const
+{
+    return m_routingProtocol;
+}
+
 void
 RangerNetDevice::SetChannel(Ptr<SpectrumChannel> channel)
 {

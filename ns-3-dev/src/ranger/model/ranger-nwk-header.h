@@ -133,11 +133,56 @@ class MessageHeader : public Header
          */
         struct LinkMessage
         {
-            uint8_t linkQuality; //!< Link code
+            uint8_t linkStatus; //!< Link code
             Ipv4Address neighborAddresses; //!< Neighbor interface address container.
         };
         uint8_t linkNumber; //!< Link messages container.
         std::vector<LinkMessage> linkMessages; //!< Link messages container.
+
+        /**
+         * This method is used to print the content of a Hello message.
+         * \param os output stream
+         */
+        void Print(std::ostream& os) const;
+        /**
+         * Returns the expected size of the header.
+         * \returns the expected size of the header.
+         */
+        uint32_t GetSerializedSize() const;
+        /**
+         * This method is used by Packet::AddHeader to
+         * store a header into the byte buffer of a packet.
+         *
+         * \param start an iterator which points to where the header should
+         *        be written.
+         */
+        void Serialize(Buffer::Iterator start) const;
+        /**
+         * This method is used by Packet::RemoveHeader to
+         * re-create a header from the byte buffer of a packet.
+         *
+         * \param start an iterator which points to where the header should
+         *        read from.
+         * \param messageSize the message size.
+         * \returns the number of bytes read.
+         */
+        uint32_t Deserialize(Buffer::Iterator start, uint32_t messageSize);
+    };
+
+    /**
+     * \ingroup ranger
+     * NodeInfo Message Format
+    */
+    struct AudioData
+    {
+        /**
+         * audio message item
+         */
+        Ipv4Address OriAddr;
+        uint8_t AudioSeq;
+        uint8_t AudioSize;
+        uint8_t AssignNum; //!< Assign node messages container.
+        std::vector<Ipv4Address> AssignNeighbor; //!< Assign node messages container.
 
         /**
          * This method is used to print the content of a Hello message.
@@ -175,13 +220,14 @@ class MessageHeader : public Header
      */
     struct
     {
-        NodeInfo nodeInfo;     //!< MID message (optional).
+        NodeInfo nodeInfo;     //!< NodeInfo message (optional).
+        AudioData audioData;    //!< AudioData message (optional).
     } m_message;     //!< The actual message being carried.
 
   public:
     /**
-     * Set the message type to HELLO and return the message content.
-     * \returns The HELLO message.
+     * Set the message type to NodeInfo and return the message content.
+     * \returns The NodeInfo message.
      */
     NodeInfo& GetNodeInfo()
     {
@@ -204,6 +250,33 @@ class MessageHeader : public Header
     {
         NS_ASSERT(m_messageType == NODEINFO_MESSAGE);
         return m_message.nodeInfo;
+    }
+
+    /**
+     * Set the message type to AudioData and return the message content.
+     * \returns The AudioData message.
+     */
+    AudioData& GetAudioData()
+    {
+        if (m_messageType == 0)
+        {
+            m_messageType = AUDIODATA_MESSAGE;
+        }
+        else
+        {
+            NS_ASSERT(m_messageType == AUDIODATA_MESSAGE);
+        }
+        return m_message.audioData;
+    }
+
+    /**
+     * Get the HELLO message.
+     * \returns The HELLO message.
+     */
+    const AudioData& GetAudioData() const
+    {
+        NS_ASSERT(m_messageType == AUDIODATA_MESSAGE);
+        return m_message.audioData;
     }
 
 };
