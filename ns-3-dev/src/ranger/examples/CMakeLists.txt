@@ -1,6 +1,7 @@
 set(base_examples
     ranger-test
     ranger-routing-simple-test
+    ranger-mobility-test
 )
 
 foreach(
