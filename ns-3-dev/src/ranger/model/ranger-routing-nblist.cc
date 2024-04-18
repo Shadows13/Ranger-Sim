@@ -207,6 +207,19 @@ RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
     }
 }
 
+struct reachableNodeElement
+{
+    Ipv4Address reachableAddr;
+    uint8_t oneHopStatus;
+    uint8_t twoHopStatus;
+};
+
+struct reachableMapElement
+{
+    Ipv4Address targetAddr;
+    std::vector<reachableNodeElement> reachableNode;
+};
+
 void
 RangerNeighborList::GetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader::AudioData& header) {
 

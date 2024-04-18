@@ -55,7 +55,7 @@ void CheckDistances(NodeContainer &nodes, double maxDistance) {
             Ptr<RandomWalk2dMobilityModel> mobility = node->GetObject<RandomWalk2dMobilityModel>();
             mobility->SetAttribute("Mode", StringValue("Time"));
             mobility->SetAttribute("Time", TimeValue(Seconds(1.0)));
-            mobility->SetAttribute("Speed", StringValue("ns3::ConstantRandomVariable[Constant=1.0]"));
+            mobility->SetAttribute("Speed", StringValue("ns3::ConstantRandomVariable[Constant=5.0]"));
             mobility->SetAttribute("Direction", StringValue("ns3::UniformRandomVariable[Min=0.0|Max=6.283184]"));
         }
     }
