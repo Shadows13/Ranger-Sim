@@ -29,6 +29,17 @@
 #include <iostream>
 #include <set>
 #include <vector>
+#include <unordered_set>
+#include <unordered_map>
+
+namespace std {
+template <>
+struct hash<ns3::Ipv4Address> {
+    size_t operator()(const ns3::Ipv4Address& addr) const {
+        return hash<uint32_t>()(addr.Get());
+    }
+};
+}
 
 namespace ns3
 {
@@ -58,6 +69,8 @@ public:
     }
     uint8_t calLqi() const; 
 };
+
+// 特化 std::hash 来包含对 ns3::Ipv4Address 的支持
 
 
 struct NeighborStatus
@@ -168,6 +181,28 @@ class RangerNeighborList
      */
     void GetNeighborNodeInfo(MessageHeader::NodeInfo& header);
 
+    // For Assign
+    enum twoHopLinkJudge
+    {
+        TWOHOP_LINK_STABLE_STABLE,
+        TWOHOP_LINK_STABLE_UNSTABLE,
+        TWOHOP_LINK_UNSTABLE_STABLE,
+        TWOHOP_LINK_UNSTABLE_UNSTABLE,
+        TWOHOP_LINK_INVALID,
+    };
+
+    struct reachableMapElement
+    {
+        // Ipv4Address targetAddr;
+        Ipv4Address oneHopAddr;
+        twoHopLinkJudge linkStatus;
+    };
+    /**
+     * Transfer the two hop link status and the one hop link status to a enum.
+     * \param oneHopStatus one hop link status.
+     * \param twoHopStatus two hop link status.
+     */
+    twoHopLinkJudge JudgeTwoHopLinkStatus(NeighborStatus::Status oneHopStatus, NeighborStatus::Status twoHopStatus);
     /**
      * Pick up the assign forward node for a forward packet and edit the header
      * \param SrcAddress prev node address.
@@ -187,6 +222,7 @@ class RangerNeighborList
      * \param os output stream
      */
     void Print(std::ostream& os) const;
+    void Draw(std::ostream& os) const;
     void SetMainAddress(Ipv4Address Address) {
         m_mainAddr = Address;
     }
