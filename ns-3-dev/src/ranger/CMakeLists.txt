@@ -7,6 +7,8 @@ build_lib(
     model/ranger-nwk.cc
     model/ranger-nwk-header.cc
     model/ranger-audio-management.cc
+    model/ranger-mac.cc
+    model/ranger-mac-header.cc
   HEADER_FILES
     model/ranger-net-device.h
     model/ranger-routing-protocol.h
@@ -14,6 +16,10 @@ build_lib(
     model/ranger-nwk.h
     model/ranger-nwk-header.h
     model/ranger-audio-management.h
-  LIBRARIES_TO_LINK ${liblr-wpan}
+    model/ranger-mac.h
+    model/ranger-mac-header.h
+    model/ranger-mac-constants.h
+  LIBRARIES_TO_LINK ${libspectrum}
+                    ${liblr-wpan}
   TEST_SOURCES
 )
