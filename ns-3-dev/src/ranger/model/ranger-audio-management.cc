@@ -25,7 +25,7 @@ namespace ns3
 
 #define UINT8_SIZE (256)
 static uint8_t SeqElap(uint8_t newSeq, uint8_t nowSeq) {
-    return (newSeq > nowSeq) ? newSeq - nowSeq : UINT8_SIZE - (nowSeq - newSeq);
+    return (newSeq >= nowSeq) ? newSeq - nowSeq : UINT8_SIZE - (nowSeq - newSeq);
 }
 
 RangerAudioManagement::RangerAudioManagement() {
@@ -49,21 +49,25 @@ RangerAudioManagement::getSelfSeq() {
 
 bool
 RangerAudioManagement::isNewSeq(Ipv4Address oriAddr, uint8_t seq, Time now) {
+    //NS_LOG_UNCOND("mainAddr:[" << m_mainAddr <<  "] " << "oriAddr:[" << oriAddr << "] " << "seq:[" << (int)seq << "]");
     if(oriAddr == m_mainAddr)
     {
+        //NS_LOG_UNCOND("false");
         return false;
     }
 
     for(auto iter = m_seqTable.begin(); iter != m_seqTable.end(); iter++) {
         if (iter->oriAddr == oriAddr)
         {
-            if(now - (iter->lastTime) >= Seconds(1.0) || SeqElap(seq, (iter->currSeq)) < 10) {
+            if(now - (iter->lastTime) >= Seconds(1.0) || (SeqElap(seq, (iter->currSeq)) > 0 && SeqElap(seq, (iter->currSeq)) < 50)) {
+                //NS_LOG_UNCOND("seqnow :[" << (int)iter->currSeq << "]elap:[" << (int)SeqElap(seq, (iter->currSeq)) << "]--true");
                 iter->currSeq = seq;
                 iter->lastTime = now;
                 return true;
             } else {
+                //NS_LOG_UNCOND("seqnow :[" << (int)iter->currSeq << "]elap:[" << (int)SeqElap(seq, (iter->currSeq)) << "]--false");
                 return false;
-            }
+            }             
         }
     }
     SeqTableElement tmp;
@@ -71,6 +75,7 @@ RangerAudioManagement::isNewSeq(Ipv4Address oriAddr, uint8_t seq, Time now) {
     tmp.currSeq = seq;
     tmp.lastTime = now;
     m_seqTable.push_back(tmp);
+    //NS_LOG_UNCOND("nofound" << "--true");
     return true;
 }
 

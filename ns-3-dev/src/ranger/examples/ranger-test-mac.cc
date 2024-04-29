@@ -41,10 +41,10 @@ McpsDataIndication(ranger::McpsDataIndicationParams params, Ptr<Packet> p)
     uint8_t buffer[5] = {0};
     p->CopyData(buffer, 5);
     std::ostringstream oss;
-    for (int i = 0; i < 5; i++)
-    {
-        oss << std::hex << std::setw(2) << std::setfill('0') << (int)buffer[i];
-    }
+    // for (int i = 0; i < 5; i++)
+    // {
+    //     oss << std::hex << std::setw(2) << std::setfill('0') << (int)buffer[i];
+    // }
     // NS_LOG_UNCOND("Packet content: " << oss.str());
 }
 
@@ -65,7 +65,7 @@ SendOnePacket(Ptr<RangerMac> mac_sender, Ptr<RangerMac> mac_receiver)
     ranger::McpsDataRequestParams params;
     // params.m_dstAddr = Ipv4Address("ff.ff.ff.ff");
     params.m_dstAddr = Ipv4Address("22.22.22.22");
-    params.m_txOptions = 0x011;
+    params.m_txOptions = 0b000;
 
     mac_sender->McpsDataRequest(params, p);
 }
@@ -90,7 +90,7 @@ main(int argc, char* argv[])
 
     // LogComponentEnableAll(LOG_PREFIX_FUNC);
     // LogComponentEnable("LrWpanPhy", LOG_LEVEL_ALL);
-    // LogComponentEnable("RangerMac", LOG_LEVEL_INFO);
+    LogComponentEnable("RangerMac", LOG_LEVEL_INFO);
     // LogComponentEnable("SingleModelSpectrumChannel", LOG_LEVEL_ALL);
 
     Ptr<LrWpanPhy> phy_sender = CreateObject<LrWpanPhy>();
@@ -118,23 +118,8 @@ main(int argc, char* argv[])
     mac_sender->SetPhy(phy_sender);
     mac_receiver->SetPhy(phy_receiver);
 
-    phy_sender->SetPlmeSetTRXStateConfirmCallback(MakeCallback(&RangerMac::PlmeSetTRXStateConfirm, mac_sender));
-    phy_receiver->SetPlmeSetTRXStateConfirmCallback(MakeCallback(&RangerMac::PlmeSetTRXStateConfirm, mac_receiver));
-
-    phy_sender->SetPlmeCcaConfirmCallback(MakeCallback(&RangerMac::PlmeCcaConfirm, mac_sender));
-    phy_receiver->SetPlmeCcaConfirmCallback(MakeCallback(&RangerMac::PlmeCcaConfirm, mac_receiver));
-
-    phy_sender->SetPdDataConfirmCallback(MakeCallback(&RangerMac::PdDataConfirm, mac_sender));
-    phy_receiver->SetPdDataConfirmCallback(MakeCallback(&RangerMac::PdDataConfirm, mac_receiver));
-
-    phy_sender->SetPdDataIndicationCallback(MakeCallback(&RangerMac::PdDataIndication, mac_sender));
-    phy_receiver->SetPdDataIndicationCallback(MakeCallback(&RangerMac::PdDataIndication, mac_receiver));
-
     mac_sender->SetMcpsDataIndicationCallback(MakeCallback(&McpsDataIndication));
     mac_receiver->SetMcpsDataIndicationCallback(MakeCallback(&McpsDataIndication));
-
-    phy_sender->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_RX_ON);
-    phy_receiver->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_RX_ON);
 
     Simulator::Schedule(Seconds(1.0), &SendOnePacket, mac_sender, mac_receiver);
     Simulator::Schedule(Seconds(2.0), &SendOnePacket, mac_sender, mac_receiver);

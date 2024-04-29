@@ -80,9 +80,10 @@ RangerRoutingProtocol::DoDispose()
 }
 
 void
-RangerRoutingProtocol::SetMainIAddress(Ipv4Address mainAddress) {
+RangerRoutingProtocol::SetMainAddress(Ipv4Address mainAddress) {
     m_mainAddr = mainAddress;
     m_nbList.SetMainAddress(mainAddress);
+    m_audioManagement.setMainAddr(mainAddress);
 }
 
 void
@@ -90,20 +91,36 @@ RangerRoutingProtocol::PrintNeighborList(std::ostream& os) {
     m_nbList.Print(os);
 }
 
-void
-RangerRoutingProtocol::SendPacket(const uint32_t psduLength, Ptr<Packet> p) {
+Ptr<RangerMac>
+RangerRoutingProtocol::GetMac() const
+{
     NS_LOG_FUNCTION(this);
-    NS_ASSERT(!m_sendCallback.IsNull());
-    m_sendCallback(psduLength, p);
+    return m_mac;
 }
 
 void
-RangerRoutingProtocol::ReceivePacket(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi) {
+RangerRoutingProtocol::SetMac(Ptr<RangerMac> mac)
+{
+    NS_LOG_FUNCTION(this);
+    m_mac = mac;
+    this->SetSendCallback(MakeCallback(&RangerMac::McpsDataRequest, m_mac));
+    m_mac->SetMcpsDataIndicationCallback(MakeCallback(&RangerRoutingProtocol::ReceivePacket, this));
+}
+
+void
+RangerRoutingProtocol::SendPacket(ranger::McpsDataRequestParams sendParams, Ptr<Packet> p) {
+    NS_LOG_FUNCTION(this);
+    NS_ASSERT(!m_sendCallback.IsNull());
+    m_sendCallback(sendParams, p);
+}
+
+void
+RangerRoutingProtocol::ReceivePacket(ranger::McpsDataIndicationParams receiveParams, Ptr<Packet> p) {
     NS_LOG_FUNCTION(this);
     MessageHeader msgHdr;
     p->RemoveHeader(msgHdr);
     std::ostringstream oss;
-    oss << "[" << m_mainAddr << "]";
+    oss << "[" << m_mainAddr << "](R-AT +" << Simulator::Now().GetMilliSeconds() << "ms)";
     msgHdr.Print(oss); // 将输出重定向到字符串流
     NS_LOG_INFO(oss.str()); // 将捕获的字符串输出到日志
     switch (msgHdr.GetMessageType())
@@ -116,7 +133,11 @@ RangerRoutingProtocol::ReceivePacket(uint32_t psduLength, Ptr<Packet> p, uint8_t
 
         MessageHeader::AudioData audioDataHdr = msgHdr.GetAudioData();
         if(m_audioManagement.isNewSeq(audioDataHdr.OriAddr, audioDataHdr.AudioSeq, Simulator::Now())) {
-            
+            // Trace
+            m_receiveTraceCallback(m_mainAddr, audioDataHdr.OriAddr, audioDataHdr.AudioSeq, Simulator::Now());
+            if(isForwardNode(audioDataHdr) || false) {
+                ForwardAudioDataRequest(msgHdr);
+            }
         }
         break;
     }
@@ -131,6 +152,16 @@ RangerRoutingProtocol::SetSendCallback(RangerRoutingProtocolSendCallback cb) {
 }
 
 void
+RangerRoutingProtocol::SetReceiveTraceCallback(RangerRoutingProtocolReceiveTraceCallback cb) {
+    m_receiveTraceCallback = cb;
+}
+
+void
+RangerRoutingProtocol::SetSendTraceCallback(RangerRoutingProtocolSendTraceCallback cb) {
+    m_sendTraceCallback = cb;
+}
+
+void
 RangerRoutingProtocol::SourceAudioDataRequest(const uint32_t audioLen) {
     NS_LOG_FUNCTION(this);
     // Create a new message hdr
@@ -140,9 +171,7 @@ RangerRoutingProtocol::SourceAudioDataRequest(const uint32_t audioLen) {
     // Send the message
     
     MessageHeader::AudioData& audiodataHdr = msg.GetAudioData();
-    //m_nbList.GetSourceAssignNeighbor(audiodataHdr);
-    audiodataHdr.AssignNum = 0;
-    //audiodataHdr.AssignNeighbor.push_back(Ipv4Address("255.123.123.123"));
+    m_nbList.GetSourceAssignNeighbor(audiodataHdr);
     audiodataHdr.OriAddr = m_mainAddr;
     audiodataHdr.AudioSeq = m_audioManagement.getSelfSeq();
     audiodataHdr.AudioSize = audioLen;
@@ -150,6 +179,36 @@ RangerRoutingProtocol::SourceAudioDataRequest(const uint32_t audioLen) {
     msg.SetMessageLength(msg.GetSerializedSize());
 
     EnqueueMessage(msg, Seconds(0));
+}
+
+void
+RangerRoutingProtocol::ForwardAudioDataRequest(const MessageHeader& OriMessageHdr) {
+    NS_LOG_FUNCTION(this);
+    // Create a new message hdr
+    MessageHeader msg;
+    msg.SetMessageType(MessageHeader::AUDIODATA_MESSAGE);
+    msg.SetSrcAddress(m_mainAddr);
+    // Send the message
+    
+    MessageHeader::AudioData& audioDataHdr = msg.GetAudioData();
+    audioDataHdr.OriAddr = OriMessageHdr.GetAudioData().OriAddr;
+    audioDataHdr.AudioSeq = OriMessageHdr.GetAudioData().AudioSeq;
+    audioDataHdr.AudioSize = OriMessageHdr.GetAudioData().AudioSize;
+    m_nbList.GetForwardAssignNeighbor(OriMessageHdr.GetSrcAddress(), audioDataHdr);
+    msg.SetMessageLength(msg.GetSerializedSize());
+
+    EnqueueMessage(msg, Seconds(0));
+}
+
+bool 
+RangerRoutingProtocol::isForwardNode(const MessageHeader::AudioData& assignHdr){
+    NS_LOG_FUNCTION(this);
+    for(auto assignIter = assignHdr.AssignNeighbor.begin(); assignIter != assignHdr.AssignNeighbor.end(); assignIter++) {
+        if(*assignIter == m_mainAddr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void
@@ -164,19 +223,47 @@ void
 RangerRoutingProtocol::SendQueuedMessages() {
     //NS_LOG_FUNCTION(this);
     for (auto messageIter = m_queuedMessages.begin(); messageIter != m_queuedMessages.end(); messageIter++) {
-        
+
+
         switch (messageIter->GetMessageType()) {
         case MessageHeader::NODEINFO_MESSAGE: {
+            std::ostringstream oss;
+            oss << "[" << m_mainAddr << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)";
+            messageIter->Print(oss); // 将输出重定向到字符串流
+            NS_LOG_INFO(oss.str()); // 将捕获的字符串输出到日志
+
             Ptr<Packet> p = Create<Packet>(0);
             p->AddHeader(*messageIter);
-            SendPacket(p->GetSize(), p);
+            ranger::McpsDataRequestParams sendParams;
+            sendParams.m_dstAddr = Ipv4Address("255.255.255.255");
+            sendParams.m_msduHandle = 0;
+            sendParams.m_txOptions = 0b010;
+            SendPacket(sendParams, p);
             break;
         }
         case MessageHeader::AUDIODATA_MESSAGE: {
             MessageHeader::AudioData tmp = messageIter->GetAudioData();
+
+            if(m_mainAddr == tmp.OriAddr) {
+                std::ostringstream oss;
+                oss << "[" << m_mainAddr << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)";
+                messageIter->Print(oss); // 将输出重定向到字符串流
+                NS_LOG_INFO(oss.str()); // 将捕获的字符串输出到日志
+            } else {
+                std::ostringstream oss;
+                oss << "[" << m_mainAddr << "](F-AT +" << Simulator::Now().GetMilliSeconds() << "ms)";
+                messageIter->Print(oss); // 将输出重定向到字符串流
+                NS_LOG_INFO(oss.str()); // 将捕获的字符串输出到日志
+            }
             Ptr<Packet> p = Create<Packet>(tmp.AudioSize);
             p->AddHeader(*messageIter);
-            SendPacket(p->GetSize(), p);
+            ranger::McpsDataRequestParams sendParams;
+            sendParams.m_dstAddr = Ipv4Address("255.255.255.255");
+            sendParams.m_msduHandle = 0;
+            sendParams.m_txOptions = 0b010;
+            SendPacket(sendParams, p);
+            // Trace
+            m_sendTraceCallback(m_mainAddr, messageIter->GetAudioData().OriAddr, messageIter->GetAudioData().AudioSeq, Simulator::Now());
             break;
         }
         

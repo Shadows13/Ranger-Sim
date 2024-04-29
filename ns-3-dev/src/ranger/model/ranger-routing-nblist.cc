@@ -224,7 +224,91 @@ RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
 
 void
 RangerNeighborList::GetForwardAssignNeighbor(Ipv4Address SrcAddress, MessageHeader::AudioData& header) {
+    std::unordered_set<Ipv4Address> hiddenNode;
+    std::unordered_map<Ipv4Address, std::vector<reachableMapElement>> reachableMap;
+    std::unordered_set<Ipv4Address> assignNeighborSet;
+    // get all the STABLEorUNSTABLE one hop neighbor, mark as hiddenNode.
+    // It means there is no need to forward the audio data to them.
+    hiddenNode.insert(m_mainAddr);
+    for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end(); iter++) {
+        if(iter->neighborMainAddr == SrcAddress) {
+            hiddenNode.insert(iter->neighborMainAddr);
+            for(auto secondIter = iter->twoHopNodeInfo.begin(); secondIter != iter->twoHopNodeInfo.end(); secondIter++) {
+                hiddenNode.insert(secondIter->neighborAddresses);
+            }
+        } else if(iter->status == NeighborStatus::STATUS_STABLE || iter->status == NeighborStatus::STATUS_UNSTABLE) {
+            hiddenNode.insert(iter->neighborMainAddr);
+        }
+    }
+    // find all the node that can be reached from the source node.
+    // if find target, fill it into the reachableMap.
+    for(auto oneHopIter = m_nbStatus.begin(); oneHopIter != m_nbStatus.end(); oneHopIter++) {
+        for(auto twoHopIter = oneHopIter->twoHopNodeInfo.begin(); twoHopIter != oneHopIter->twoHopNodeInfo.end(); twoHopIter++) {
+            if(hiddenNode.find(twoHopIter->neighborAddresses) == hiddenNode.end()) {
+                if(reachableMap.find(twoHopIter->neighborAddresses) != reachableMap.end()) {
+                    reachableMapElement tmpElem;
+                    tmpElem.oneHopAddr = oneHopIter->neighborMainAddr;
+                    tmpElem.linkStatus = JudgeTwoHopLinkStatus(oneHopIter->status, (NeighborStatus::Status)twoHopIter->linkStatus);
+                    reachableMap[twoHopIter->neighborAddresses].push_back(tmpElem);
+                } else {
+                    reachableMapElement tmpElem;
+                    tmpElem.oneHopAddr = oneHopIter->neighborMainAddr;
+                    tmpElem.linkStatus = JudgeTwoHopLinkStatus(oneHopIter->status, (NeighborStatus::Status)twoHopIter->linkStatus);
+                    std::vector<reachableMapElement> tmpVec;
+                    tmpVec.push_back(tmpElem);
+                    reachableMap.insert(std::make_pair(twoHopIter->neighborAddresses, tmpVec));
+                }
+            }
+        }
+    }
+    // for(auto mapiter = reachableMap.begin(); mapiter != reachableMap.end(); mapiter++) {
+    //     std::cout << "targetAddr:" << mapiter->first;
+    //     for(auto veciter = mapiter->second.begin(); veciter != mapiter->second.end(); veciter++) {
+    //         std::cout << " [" << veciter->oneHopAddr << "]-" << (uint16_t)veciter->linkStatus;
+    //     }
+    //     std::cout << std::endl;
+    // }
 
+    // find all the target node that can be reached from one way, make that onehop node as the assign forward node;
+
+    for(auto mapiter = reachableMap.begin(); mapiter != reachableMap.end(); mapiter++) {
+        if(mapiter->second.size() == 1) {
+            assignNeighborSet.insert(mapiter->second[0].oneHopAddr);
+        }
+    }
+    // // If there is more than one path to reach a target node, first check whether any of the arriving nodes are already in the assigned node SET
+    // // If there is, do not further evaluate; if there isn't, then compare among the multiple paths.
+
+    // todo: 最终的选择并不完备，对于所有有2个选择以上的target，其中间仍然可能存在相同的，在这没有处理，只是按顺序查找。
+    for(auto mapiter = reachableMap.begin(); mapiter != reachableMap.end(); mapiter++) {
+        if(mapiter->second.size() > 1) {
+            bool found = false;
+            for(auto veciter = mapiter->second.begin(); veciter != mapiter->second.end(); veciter++) {
+                if(assignNeighborSet.find(veciter->oneHopAddr) != assignNeighborSet.end()) {
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                Ipv4Address winAddr = Ipv4Address("255.255.255.255");
+                twoHopLinkJudge winLink = TWOHOP_LINK_INVALID;
+                for(auto veciter = mapiter->second.begin(); veciter != mapiter->second.end(); veciter++) {
+                    if (veciter->linkStatus < winLink)
+                    {
+                        winLink = veciter->linkStatus;
+                        winAddr = veciter->oneHopAddr;
+                    }
+                }
+                assignNeighborSet.insert(winAddr);
+            }
+        }
+    }
+
+    header.AssignNum = 0;
+    for(auto setIter = assignNeighborSet.begin(); setIter != assignNeighborSet.end(); setIter++) {
+        header.AssignNeighbor.push_back(*setIter);
+        header.AssignNum++;
+    }
 }
 
 void
@@ -261,13 +345,13 @@ RangerNeighborList::GetSourceAssignNeighbor(MessageHeader::AudioData& header) {
             }
         }
     }
-    for(auto mapiter = reachableMap.begin(); mapiter != reachableMap.end(); mapiter++) {
-        std::cout << "targetAddr:" << mapiter->first;
-        for(auto veciter = mapiter->second.begin(); veciter != mapiter->second.end(); veciter++) {
-            std::cout << " [" << veciter->oneHopAddr << "]-" << (uint16_t)veciter->linkStatus;
-        }
-        std::cout << std::endl;
-    }
+    // for(auto mapiter = reachableMap.begin(); mapiter != reachableMap.end(); mapiter++) {
+    //     std::cout << "targetAddr:" << mapiter->first;
+    //     for(auto veciter = mapiter->second.begin(); veciter != mapiter->second.end(); veciter++) {
+    //         std::cout << " [" << veciter->oneHopAddr << "]-" << (uint16_t)veciter->linkStatus;
+    //     }
+    //     std::cout << std::endl;
+    // }
 
     // find all the target node that can be reached from one way, make that onehop node as the assign forward node;
 
@@ -276,8 +360,10 @@ RangerNeighborList::GetSourceAssignNeighbor(MessageHeader::AudioData& header) {
             assignNeighborSet.insert(mapiter->second[0].oneHopAddr);
         }
     }
-    // If there is more than one path to reach a target node, first check whether any of the arriving nodes are already in the assigned node SET
-    // If there is, do not further evaluate; if there isn't, then compare among the multiple paths.
+    // // If there is more than one path to reach a target node, first check whether any of the arriving nodes are already in the assigned node SET
+    // // If there is, do not further evaluate; if there isn't, then compare among the multiple paths.
+
+    // todo: 最终的选择并不完备，对于所有有2个选择以上的target，其中间仍然可能存在相同的，在这没有处理，只是按顺序查找。
     for(auto mapiter = reachableMap.begin(); mapiter != reachableMap.end(); mapiter++) {
         if(mapiter->second.size() > 1) {
             bool found = false;
@@ -288,7 +374,7 @@ RangerNeighborList::GetSourceAssignNeighbor(MessageHeader::AudioData& header) {
                 }
             }
             if(!found) {
-                Ipv4Address winAddr = 0;
+                Ipv4Address winAddr = Ipv4Address("255.255.255.255");
                 twoHopLinkJudge winLink = TWOHOP_LINK_INVALID;
                 for(auto veciter = mapiter->second.begin(); veciter != mapiter->second.end(); veciter++) {
                     if (veciter->linkStatus < winLink)
@@ -302,22 +388,23 @@ RangerNeighborList::GetSourceAssignNeighbor(MessageHeader::AudioData& header) {
         }
     }
 
-    // for (auto setIter = assignNeighbor.begin(); setIter != assignNeighbor.end(); setIter++)
-    // {
-    //     cout << "AssignNeighbor:" << *setIter << endl;
-    // }
+    header.AssignNum = 0;
+    for(auto setIter = assignNeighborSet.begin(); setIter != assignNeighborSet.end(); setIter++) {
+        header.AssignNeighbor.push_back(*setIter);
+        header.AssignNum++;
+    }
 }
 
 void
 RangerNeighborList::Print(std::ostream& os) const
 {
-    os << "----------------[" << m_mainAddr << "]----------------" << std::endl;
+    os << "----------------[" << m_mainAddr << "]---------------- AT +" << Simulator::Now().GetMilliSeconds() << "ms" << std::endl;
     for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end(); iter++) {
         os << "[" << iter->neighborMainAddr << "]";
         os << "(" << (uint16_t)iter->lqi << "-" << (uint16_t)iter->status << "):";
         iter->Print(os);
     }
-    os << "----------------[" << m_mainAddr << "]----------------" << std::endl;
+    os << "----------------[" << m_mainAddr << "]---------------- AT +" << Simulator::Now().GetMilliSeconds() << "ms" << std::endl;
 }
 
 } // namespace ns3

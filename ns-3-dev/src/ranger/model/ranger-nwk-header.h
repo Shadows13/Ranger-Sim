@@ -212,6 +212,10 @@ class MessageHeader : public Header
          * \returns the number of bytes read.
          */
         uint32_t Deserialize(Buffer::Iterator start, uint32_t messageSize);
+
+        uint8_t GetSeq() {
+            return AudioSeq;
+        }
     };
 
   private:

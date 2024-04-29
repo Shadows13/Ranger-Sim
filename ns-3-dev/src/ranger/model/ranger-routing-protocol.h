@@ -21,6 +21,7 @@
 #ifndef RANGER_ROUTING_PROTOCOL_H
 #define RANGER_ROUTING_PROTOCOL_H
 
+#include "ranger-mac.h"
 #include "ranger-nwk-header.h"
 #include "ranger-routing-nblist.h"
 #include "ranger-audio-management.h"
@@ -38,7 +39,9 @@
 namespace ns3
 {
 
-typedef Callback<void, uint32_t, Ptr<Packet>> RangerRoutingProtocolSendCallback;
+typedef Callback<void, ranger::McpsDataRequestParams, Ptr<Packet>> RangerRoutingProtocolSendCallback;
+typedef Callback<void, Ipv4Address, Ipv4Address, uint8_t, Time> RangerRoutingProtocolReceiveTraceCallback;
+typedef Callback<void, Ipv4Address, Ipv4Address, uint8_t, Time> RangerRoutingProtocolSendTraceCallback;
 
 
 class RangerRoutingProtocol : public Object
@@ -69,7 +72,7 @@ class RangerRoutingProtocol : public Object
      *
      * \param mainAddress IPv4 interface index
      */
-    void SetMainIAddress(Ipv4Address mainAddress);
+    void SetMainAddress(Ipv4Address mainAddress);
 
     /**
      * \brief Print the hold neighbor list.
@@ -78,11 +81,27 @@ class RangerRoutingProtocol : public Object
      */
     void PrintNeighborList(std::ostream& os);
 
+    /**
+     * Set the MAC to be used by this NetDevice.
+     *
+     * \param mac the MAC to be used
+     */
+    void SetMac(Ptr<RangerMac> mac);
+
+    /**
+     * Get the MAC used by this NetDevice.
+     *
+     * \return the MAC object
+     */
+    Ptr<RangerMac> GetMac() const;
+
 
   private:
     RangerNeighborList m_nbList; // neighbor management
     Ipv4Address m_mainAddr;
     RangerAudioManagement m_audioManagement;
+
+    Ptr<RangerMac> m_mac;
 
     // for record
     // RangerRecorder m_record;
@@ -93,12 +112,14 @@ class RangerRoutingProtocol : public Object
      * Send/Receive Management
      * 
     */
-    void ReceivePacket(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi);  // receive packet
-    void SendPacket(const uint32_t psduLength, Ptr<Packet> p);     // send packet
+    void ReceivePacket(ranger::McpsDataIndicationParams receiveParams, Ptr<Packet> p);  // receive packet
+    void SendPacket(ranger::McpsDataRequestParams sendParams, Ptr<Packet> p);     // send packet
     void SetSendCallback(RangerRoutingProtocolSendCallback cb);        // set the send callback
 
     void SourceAudioDataRequest(const uint32_t audioLen);        // send audio data request
+    void ForwardAudioDataRequest(const MessageHeader& OriMessageHdr);        // send audio data request
 
+    bool isForwardNode(const MessageHeader::AudioData& assignHdr);       // check if the node is a forward node
   private:
     // A list of pending messages which are buffered awaiting for being sent.
     MessageHeaderList m_queuedMessages;
@@ -114,6 +135,12 @@ class RangerRoutingProtocol : public Object
 
 
     RangerRoutingProtocolSendCallback m_sendCallback;
+    RangerRoutingProtocolReceiveTraceCallback m_receiveTraceCallback;
+    RangerRoutingProtocolSendTraceCallback m_sendTraceCallback;
+
+  public:
+    void SetReceiveTraceCallback(RangerRoutingProtocolReceiveTraceCallback cb);
+    void SetSendTraceCallback(RangerRoutingProtocolSendTraceCallback cb);
 
   private:
     /**

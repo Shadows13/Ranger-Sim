@@ -23,6 +23,7 @@
 #define RANGER_NET_DEVICE_H
 
 #include <ns3/ranger-routing-protocol.h>
+#include <ns3/ranger-mac.h>
 
 #include <ns3/lr-wpan-phy.h>
 #include <ns3/net-device.h>
@@ -57,12 +58,12 @@ class RangerNetDevice : public NetDevice
     //     RFC6282  //!< 0200:0000:XXXX
     // };
 
-    // /**
-    //  * Set the MAC to be used by this NetDevice.
-    //  *
-    //  * \param mac the MAC to be used
-    //  */
-    // void SetMac(Ptr<LrWpanMac> mac);
+    /**
+     * Set the MAC to be used by this NetDevice.
+     *
+     * \param mac the MAC to be used
+     */
+    void SetMac(Ptr<RangerMac> mac);
 
     /**
      * Set the PHY to be used by the MAC and this NetDevice.
@@ -70,13 +71,6 @@ class RangerNetDevice : public NetDevice
      * \param phy the PHY to be used
      */
     void SetPhy(Ptr<LrWpanPhy> phy);
-
-    // /**
-    //  * Set the CSMA/CA implementation to be used by the MAC and this NetDevice.
-    //  *
-    //  * \param csmaca the CSMA/CA implementation to be used
-    //  */
-    // void SetCsmaCa(Ptr<LrWpanCsmaCa> csmaca);
 
     /**
      * Get the PHY used by this NetDevice.
@@ -93,12 +87,12 @@ class RangerNetDevice : public NetDevice
      */
     void SetChannel(Ptr<SpectrumChannel> channel);
 
-    // /**
-    //  * Get the MAC used by this NetDevice.
-    //  *
-    //  * \return the MAC object
-    //  */
-    // Ptr<LrWpanMac> GetMac() const;
+    /**
+     * Get the MAC used by this NetDevice.
+     *
+     * \return the MAC object
+     */
+    Ptr<RangerMac> GetMac() const;
 
     /**
      * Get the PHY used by this NetDevice.
@@ -106,13 +100,6 @@ class RangerNetDevice : public NetDevice
      * \return the PHY object
      */
     Ptr<LrWpanPhy> GetPhy() const;
-
-    // /**
-    //  * Get the CSMA/CA implementation used by this NetDevice.
-    //  *
-    //  * \return the CSMA/CA implementation object
-    //  */
-    // Ptr<LrWpanCsmaCa> GetCsmaCa() const;
 
     /**
      * Get the PHY used by this NetDevice.
@@ -254,20 +241,15 @@ class RangerNetDevice : public NetDevice
     //  */
     // Mac48Address BuildPseudoMacAddress(uint16_t panId, Mac16Address shortAddr) const;
 
-    // /**
-    //  * The MAC for this NetDevice.
-    //  */
-    // Ptr<LrWpanMac> m_mac;
+    /**
+     * The MAC for this NetDevice.
+     */
+    Ptr<RangerMac> m_mac;
 
     /**
      * The PHY for this NetDevice.
      */
     Ptr<LrWpanPhy> m_phy;
-
-    // /**
-    //  * The CSMA/CA implementation for this NetDevice.
-    //  */
-    // Ptr<LrWpanCsmaCa> m_csmaca;
 
     /**
      * The Routing Protocol for this NetDevice.

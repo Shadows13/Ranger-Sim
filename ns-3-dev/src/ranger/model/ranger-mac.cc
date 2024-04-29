@@ -61,7 +61,7 @@ RangerMac::RangerMac()
     m_randomBackoffPeriodsLeft = 0;
 
     // 初始化发送队列检查定时器
-    CheckQueuePeriodically(0.1);
+    CheckQueuePeriodically(0.001);
     
 }   // RangerMac::RangerMac
 
@@ -131,21 +131,37 @@ RangerMac::McpsDataRequest(ranger::McpsDataRequestParams params, Ptr<Packet> p)
     // 如果是需要回复ACK，m_txOption = 0b'001' = 1
     // 如果是广播包，m_txOption = 0b'010' = 2
     // 如果是广播包且需要回复ACK，m_txOption = 0b'011' = 3
-    if (params.m_txOptions & 0x001)
+    if (params.m_txOptions & 0b001)
     {
         macHdr.SetAckReq();
     }
-    if (params.m_txOptions & 0x010)
+    if (params.m_txOptions & 0b010)
     {
         macHdr.SetType(RangerMacHeader::RANGER_MAC_BROADCAST);
+    }
+    else
+    {
+        macHdr.SetType(RangerMacHeader::RANGER_MAC_UNICAST);
     }
 
     // 添加MAC包头
     p->AddHeader(macHdr);
-    // 将包加入发送队列
+    
+    // 定义发送队列元素
     Ptr<TxQueueElement> txQElement = Create<TxQueueElement>();
     txQElement->txQMsduHandle = params.m_msduHandle;
     txQElement->txQPkt = p;
+    // 根据包类型决定包是否重发
+    if (!macHdr.IsAckReq())
+    {   // 不需要ACK的包不重发
+        txQElement->retryTimes = m_maxRetryTimes;
+    }
+    else
+    {   // 需要ACK的包进行重发
+        txQElement->retryTimes = 0;        
+    }
+
+    // 将包加入发送队列
     EnqueueTxQElement(txQElement);
     // CheckQueue();   // 已改成定时器触发
 }   // RangerMac::McpsDataRequest
@@ -391,6 +407,19 @@ RangerMac::SetPhy(Ptr<LrWpanPhy> phy)
 {
     NS_LOG_FUNCTION(this << phy);
     m_phy = phy;
+
+    // 设置PHY层的Callback
+    m_phy->SetPlmeSetTRXStateConfirmCallback(MakeCallback(&RangerMac::PlmeSetTRXStateConfirm, this));
+    m_phy->SetPlmeCcaConfirmCallback(MakeCallback(&RangerMac::PlmeCcaConfirm, this));
+    m_phy->SetPdDataConfirmCallback(MakeCallback(&RangerMac::PdDataConfirm, this));
+    m_phy->SetPdDataIndicationCallback(MakeCallback(&RangerMac::PdDataIndication, this));
+
+    // 通过初始化MAC层状态初始化PHY层状态
+    SetMacState(ranger::MAC_IDLE);
+
+    // m_phy->SetPlmeEdConfirmCallback(MakeCallback(&LrWpanMac::PlmeEdConfirm, m_mac));
+    // m_phy->SetPlmeGetAttributeConfirmCallback(MakeCallback(&LrWpanMac::PlmeGetAttributeConfirm, m_mac));
+    // m_phy->SetPlmeSetAttributeConfirmCallback(MakeCallback(&LrWpanMac::PlmeSetAttributeConfirm, m_mac));
 }   // RangerMac::SetPhy
 
 void

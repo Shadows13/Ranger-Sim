@@ -88,13 +88,13 @@ main(int argc, char* argv[])
     std::ofstream berfile("802.15.4-psr-distance.plt");
 
     int minDistance = 1;
-    int maxDistance = 200; // meters
+    int maxDistance = 1000; // meters
     int increment = 1;
     int maxPackets = 1000;
-    int packetSize = 7; // PSDU = 20 bytes (11 bytes MAC header + 7 bytes MSDU )
-    double txPower = 0;
+    int packetSize = 20; // PSDU = 20 bytes (11 bytes MAC header + 7 bytes MSDU )
+    double txPower = 30;
     uint32_t channelNumber = 11;
-    double rxSensitivity = -106.58; // dBm
+    double rxSensitivity = -93; // dBm
 
     CommandLine cmd(__FILE__);
 
@@ -132,8 +132,9 @@ main(int argc, char* argv[])
     LrWpanSpectrumValueHelper svh;
     Ptr<SpectrumValue> psd = svh.CreateTxPowerSpectralDensity(txPower, channelNumber);
     dev0->GetPhy()->SetTxPowerSpectralDensity(psd);
-
+    //dev1->GetPhy()->SetTxPowerSpectralDensity(psd);
     // Set Rx sensitivity of the receiving device
+    // dev0->GetPhy()->SetRxSensitivity(rxSensitivity);
     dev1->GetPhy()->SetRxSensitivity(rxSensitivity);
 
     McpsDataIndicationCallback cb0;
@@ -171,7 +172,7 @@ main(int argc, char* argv[])
     psrplot.SetTitle(os.str());
     psrplot.SetTerminal("postscript eps color enh \"Times-BoldItalic\"");
     psrplot.SetLegend("distance (m)", "Packet Success Rate (PSR)");
-    psrplot.SetExtra("set xrange [0:200]\n\
+    psrplot.SetExtra("set xrange [0:1000]\n\
                       set yrange [0:1]\n\
                       set grid\n\
                       set style line 1 linewidth 5\n\

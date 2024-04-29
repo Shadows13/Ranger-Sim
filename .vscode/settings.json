@@ -84,7 +84,15 @@
         "ipv4.h": "cpp",
         "ipv4-address.h": "cpp",
         "ranger-audio-management.h": "cpp",
-        "core-module.h": "cpp"
+        "core-module.h": "cpp",
+        "propagation-delay-model.h": "cpp",
+        "random-walk-2d-mobility-model.h": "cpp",
+        "random-variable-stream.h": "cpp",
+        "single-model-spectrum-channel.h": "cpp",
+        "unordered_set": "cpp",
+        "ranger-recorder.h": "cpp",
+        "ranger-mac-constants.h": "cpp",
+        "ranger-routing-nblist.h": "cpp"
     },
     "cmake.sourceDirectory": "/home/shadow13/Desktop/Ranger-Sim/ns-3-dev"
 }

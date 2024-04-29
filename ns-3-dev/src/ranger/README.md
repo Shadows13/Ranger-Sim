@@ -9,7 +9,7 @@
  * @param params McpsDataRequestParams
  * @param p packet 
  */
-void rangere::McpsDataRequest(ranger::McpsDataRequestParams params, Ptr<Packet> p);
+void ranger::McpsDataRequest(ranger::McpsDataRequestParams params, Ptr<Packet> p);
 
 /**
  * @ingroup ranger

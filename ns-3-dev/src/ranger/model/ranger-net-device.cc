@@ -52,9 +52,8 @@ RangerNetDevice::GetTypeId()
 RangerNetDevice::RangerNetDevice() : m_configComplete(false)
 {
     NS_LOG_FUNCTION(this);
-    // m_mac = CreateObject<LrWpanMac>();
     m_phy = CreateObject<LrWpanPhy>();
-    //m_csmaca = CreateObject<LrWpanCsmaCa>();
+    m_mac = CreateObject<RangerMac>();
     m_routingProtocol = CreateObject<RangerRoutingProtocol>();
     CompleteConfig();
 }
@@ -89,7 +88,8 @@ void
 RangerNetDevice::SetAddress(Address address)
 {
     NS_LOG_FUNCTION(this);
-    m_routingProtocol->SetMainIAddress(Ipv4Address::ConvertFrom(address));
+    m_routingProtocol->SetMainAddress(Ipv4Address::ConvertFrom(address));
+    m_mac->SetAddress(Ipv4Address::ConvertFrom(address));
     CompleteConfig();
 }
 
@@ -320,12 +320,12 @@ void
 RangerNetDevice::DoDispose()
 {
     NS_LOG_FUNCTION(this);
-    // m_mac->Dispose();
+    m_mac->Dispose();
     m_phy->Dispose();
-    // m_csmaca->Dispose();
+    m_routingProtocol->Dispose();
     m_phy = nullptr;
-    // m_mac = nullptr;
-    // m_csmaca = nullptr;
+    m_mac = nullptr;
+    m_routingProtocol = nullptr;
     m_node = nullptr;
     // chain up.
     NetDevice::DoDispose();
@@ -337,7 +337,7 @@ RangerNetDevice::DoInitialize()
     NS_LOG_FUNCTION(this);
     m_phy->Initialize();
     m_routingProtocol->Initialize();
-    // m_mac->Initialize();
+    m_mac->Initialize();
     NetDevice::DoInitialize();
 }
 // ----------------------NetDevice END----------------------
@@ -346,32 +346,17 @@ void
 RangerNetDevice::CompleteConfig()
 {
     NS_LOG_FUNCTION(this);
-    if (!m_phy || !m_routingProtocol || m_configComplete)
+    if (!m_phy || !m_mac || !m_routingProtocol || m_configComplete)
     {
         return;
     }
-    m_routingProtocol->SetSendCallback(MakeCallback(&LrWpanPhy::PdDataRequest, m_phy));
-    // m_mac->SetPhy(m_phy);
-    // m_mac->SetCsmaCa(m_csmaca);
-    // m_mac->SetMcpsDataIndicationCallback(MakeCallback(&LrWpanNetDevice::McpsDataIndication, this));
-    // m_csmaca->SetMac(m_mac);
+    m_mac->SetPhy(m_phy);
 
     Ptr<LrWpanErrorModel> model = CreateObject<LrWpanErrorModel>();
     m_phy->SetErrorModel(model);
     m_phy->SetDevice(this);
-
-    m_phy->SetPdDataIndicationCallback(MakeCallback(&RangerRoutingProtocol::ReceivePacket, m_routingProtocol));
-    // m_phy->SetPdDataConfirmCallback(MakeCallback(&LrWpanMac::PdDataConfirm, m_mac));
-    // m_phy->SetPlmeEdConfirmCallback(MakeCallback(&LrWpanMac::PlmeEdConfirm, m_mac));
-    // m_phy->SetPlmeGetAttributeConfirmCallback(
-    //     MakeCallback(&LrWpanMac::PlmeGetAttributeConfirm, m_mac));
-    // m_phy->SetPlmeSetTRXStateConfirmCallback(
-    //     MakeCallback(&LrWpanMac::PlmeSetTRXStateConfirm, m_mac));
-    // m_phy->SetPlmeSetAttributeConfirmCallback(
-    //     MakeCallback(&LrWpanMac::PlmeSetAttributeConfirm, m_mac));
-
-    // m_csmaca->SetLrWpanMacStateCallback(MakeCallback(&LrWpanMac::SetLrWpanMacState, m_mac));
-    // m_phy->SetPlmeCcaConfirmCallback(MakeCallback(&LrWpanCsmaCa::PlmeCcaConfirm, m_csmaca));
+    
+    m_routingProtocol->SetMac(m_mac);
     
     m_configComplete = true;
 }

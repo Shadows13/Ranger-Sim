@@ -3,6 +3,8 @@ set(base_examples
     ranger-routing-simple-test
     ranger-mobility-test
     ranger-test-mac
+    ranger-comprehensive-test
+    ranger-distance-error-test
 )
 
 foreach(
