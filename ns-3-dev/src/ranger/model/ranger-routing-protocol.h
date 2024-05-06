@@ -120,6 +120,7 @@ class RangerRoutingProtocol : public Object
     void ForwardAudioDataRequest(const MessageHeader& OriMessageHdr);        // send audio data request
 
     bool isForwardNode(const MessageHeader::AudioData& assignHdr);       // check if the node is a forward node
+    bool isForwardJudge_Hivemesh(const MessageHeader& hdr);
   private:
     // A list of pending messages which are buffered awaiting for being sent.
     MessageHeaderList m_queuedMessages;

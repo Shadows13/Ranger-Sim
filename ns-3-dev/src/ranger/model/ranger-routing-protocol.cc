@@ -135,7 +135,12 @@ RangerRoutingProtocol::ReceivePacket(ranger::McpsDataIndicationParams receivePar
         if(m_audioManagement.isNewSeq(audioDataHdr.OriAddr, audioDataHdr.AudioSeq, Simulator::Now())) {
             // Trace
             m_receiveTraceCallback(m_mainAddr, audioDataHdr.OriAddr, audioDataHdr.AudioSeq, Simulator::Now());
-            if(isForwardNode(audioDataHdr) || false) {
+            //NS_LOG_UNCOND("--------------");
+            // if(false || isForwardNode(audioDataHdr)) {
+            //     ForwardAudioDataRequest(msgHdr);
+            //     //NS_LOG_UNCOND("Ranger Judge: Forward");
+            // }
+            if(isForwardJudge_Hivemesh(msgHdr)) {
                 ForwardAudioDataRequest(msgHdr);
             }
         }
@@ -209,6 +214,123 @@ RangerRoutingProtocol::isForwardNode(const MessageHeader::AudioData& assignHdr){
         }
     }
     return false;
+}
+
+bool 
+RangerRoutingProtocol::isForwardJudge_Hivemesh(const MessageHeader& hdr){
+    NS_LOG_FUNCTION(this);
+    // std::ostringstream oss;
+    // m_nbList.Print(oss);
+    // NS_LOG_UNCOND(oss.str());
+    // NS_LOG_UNCOND("");
+
+    uint8_t from_idx = 0;
+    // 在邻居列表中找到目标地址，若没找到则直接返回true
+    if(!m_nbList.FindNeighbor(hdr.GetSrcAddress(), from_idx)) {
+        //NS_LOG_UNCOND("Not Found Target Address");
+        return true;
+    }
+    //Ipv4Address from_addr = hdr.GetSrcAddress();
+    Ipv4Address origin_addr = hdr.GetAudioData().OriAddr;
+    //NS_LOG_UNCOND("From : " << from_addr << " Origin : " << origin_addr);
+
+    // 若找到目标地址，取出其二跳表，备用
+    std::vector<MessageHeader::NodeInfo::LinkMessage> fromTwoHopList = m_nbList.GetTwoHopList(from_idx);
+    // 取出本地一跳表
+    std::vector<MessageHeader::NodeInfo::LinkMessage> localOneHopList = m_nbList.GetOneHopList();
+    // 若本地一跳节点为空，直接返回true
+    if(m_nbList.isEmpty()) {
+        //NS_LOG_UNCOND("Empty Local Node List");
+        return true;
+    }
+    // 对比local_addr和from_addr的周围节点信息表，得到
+    // public公共节点列表(双方都可以触达)
+    // forward转发节点列表(仅本地节点可以触达)
+    std::vector<MessageHeader::NodeInfo::LinkMessage> forward_node_table;
+    std::vector<MessageHeader::NodeInfo::LinkMessage> public_node_table;
+
+    for(auto localIter = localOneHopList.begin(); localIter != localOneHopList.end(); localIter++) {
+        // 如果本地一跳表中的节点是origin_addr，跳过
+        if(origin_addr == localIter->neighborAddresses) {
+            continue;
+        }
+
+        // 本地节点表存在，发送节点表不存在的节点，为转发目标节点
+        // 本地节点表存在，发送节点表也存在的节点，根据LQI判断是否为转发目标节点
+        // -- 发送节点中 该节点LQI <= SAFE_LQI，则  是转发目标节点
+        // -- 发送节点中 该节点LQI >  SAFE_LQI，则不是转发目标节点
+
+        // 本地节点表不存在，发送节点表存在的节点，忽略
+
+        // 遍历对比发送节点
+        uint8_t j = 0;
+
+        for(; j < fromTwoHopList.size(); j++) {
+            if(localIter->neighborAddresses != fromTwoHopList[j].neighborAddresses) {
+                continue;
+            }
+            // 本地节点表存在，发送节点表也存在的节点，根据LQI判断是否为转发目标节点
+            if(fromTwoHopList[j].linkStatus < NeighborStatus::Status::STATUS_UNSTABLE) {
+                forward_node_table.push_back(*localIter);
+            } else {
+                public_node_table.push_back(*localIter);
+            }
+            break;
+        }
+
+        if(j == fromTwoHopList.size()) {
+            forward_node_table.push_back(*localIter);
+        }
+
+    }
+
+    // 从本地周围节点信息表中，取出每个重复节点的周围节点信息表
+    uint8_t finish_forward_node_num = forward_node_table.size();
+    // 获取每个公共节点的周围节点信息表
+    for(auto publicIter = public_node_table.begin(); publicIter != public_node_table.end(); publicIter++) {
+        // 从本地周围节点信息表中，取出每个重复节点的周围节点信息表
+        uint8_t publicIndex = 0;
+        m_nbList.FindNeighbor(publicIter->neighborAddresses, publicIndex);
+        std::vector<MessageHeader::NodeInfo::LinkMessage> publicTwoHopList = m_nbList.GetTwoHopList(publicIndex);
+        // 获取每个转发目标节点，在公共节点的周围节点信息表中进行对比，判断是否为更优转发选择（检查哪个公共节点为最优转发选择）
+        // 如果本地节点不是最优转发选择，则从转发列表里删除
+        for(auto forwardIter = forward_node_table.begin(); forwardIter != forward_node_table.end();) {
+            bool isErase = false;
+            for(auto publicTwoHopIter = publicTwoHopList.begin(); publicTwoHopIter != publicTwoHopList.end(); publicTwoHopIter++) {
+                if(forwardIter->neighborAddresses != publicTwoHopIter->neighborAddresses) {
+                    continue;
+                }
+                if(forwardIter->linkStatus < publicTwoHopIter->linkStatus) {
+                    if(publicTwoHopIter->linkStatus >= NeighborStatus::Status::STATUS_UNSTABLE) {
+                        finish_forward_node_num--;
+                        forward_node_table.erase(forwardIter);
+                        isErase = true;
+                    }
+                } else if(forwardIter->linkStatus == publicTwoHopIter->linkStatus) {
+                    if(m_mainAddr.Get() < publicIter->neighborAddresses.Get()) {
+                        finish_forward_node_num--;
+                        forward_node_table.erase(forwardIter);
+                        isErase = true;
+                    }
+                } else {
+
+                }
+                
+                break;
+            }
+
+            if (!isErase)
+            {
+                forwardIter++;
+            }
+        }
+    }
+
+    bool forward_result = (finish_forward_node_num > 0) ? true : false;
+
+    
+    //NS_LOG_UNCOND("JUDGE RESULT: " << forward_result);
+    return forward_result;
 }
 
 void

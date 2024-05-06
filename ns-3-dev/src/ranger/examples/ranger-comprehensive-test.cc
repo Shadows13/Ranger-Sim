@@ -125,11 +125,20 @@ void CheckDistances(NodeContainer &nodes, double maxDistance, Time interval) {
 
 int main(int argc, char *argv[]) {
     CommandLine cmd;
+    uint8_t nodeCnt = 0;
+    uint32_t randomSeed = 0;
+    uint32_t randomRun = 0;
+    float intervalPacket = 0.0;
+    cmd.AddValue("nodeCnt", "Number of nodes", nodeCnt);
+    cmd.AddValue("randomSeed", "Random seed", randomSeed);
+    cmd.AddValue("randomRun", "Random run", randomRun);
+    cmd.AddValue("intervalPacket", "Interval between packets", intervalPacket);
     cmd.Parse(argc, argv);
     // LogComponentEnable("RangerRoutingProtocol", LOG_LEVEL_INFO);
+    NS_LOG_UNCOND("nodeCnt: " << (int)nodeCnt << ", randomSeed: " << randomSeed << ", randomRun: " << randomRun << ", intervalPacket: " << intervalPacket);
 
-    SeedManager::SetSeed(1);
-    SeedManager::SetRun(2);
+    SeedManager::SetSeed(randomSeed);
+    SeedManager::SetRun(randomRun);
 
     // 配置一些Phy层参数
     double txPower = 30;
@@ -138,9 +147,9 @@ int main(int argc, char *argv[]) {
 
     uint32_t x_max = 2000;
     uint32_t y_max = 2000;
-    uint8_t node_cnt = 16;
+    uint8_t node_cnt = nodeCnt;
 
-    // 初始位置设置为(500, 500)
+
     Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
     for (uint32_t i = 0; i < node_cnt; ++i) {
         positionAlloc->Add(Vector(x_max / 2, y_max / 2, 0));  // 为每个节点设置相同的初始位置
@@ -200,30 +209,30 @@ int main(int argc, char *argv[]) {
         devices.push_back(dev);
     }
 
-
-    for(int i = 0; i < 10000; i++) {
+    float PacketNum = (float)(1000 - 100) / intervalPacket;
+    for(int i = 0; i < PacketNum; i++) {
         Simulator::ScheduleWithContext(1,
-                                    Seconds(10 + 0.04 * i),  // 每0.5秒触发一次
+                                    Seconds(10 + intervalPacket * i),  // 每0.5秒触发一次
                                     &RangerRoutingProtocol::SourceAudioDataRequest,
                                     devices[0]->GetRoutingProtocol(),
                                     80);
     }
     for(int i = 0; i < 10000; i++) {
         Simulator::ScheduleWithContext(1,
-                                    Seconds(10 + 0.04 * i),  // 每0.5秒触发一次
+                                    Seconds(10 + intervalPacket * i),  // 每0.5秒触发一次
                                     &RangerRoutingProtocol::SourceAudioDataRequest,
                                     devices[1]->GetRoutingProtocol(),
                                     80);
     }
     for(int i = 0; i < 10000; i++) {
         Simulator::ScheduleWithContext(1,
-                                    Seconds(10 + 0.04 * i),  // 每0.5秒触发一次
+                                    Seconds(10 + intervalPacket * i),  // 每0.5秒触发一次
                                     &RangerRoutingProtocol::SourceAudioDataRequest,
                                     devices[2]->GetRoutingProtocol(),
                                     80);
     }
 
-    AnimationInterface anim ("animation.xml");
+    AnimationInterface anim ("animation0430-S12-R12.xml");
     Simulator::Stop(Seconds(1000.0));
     Simulator::Run();
     Simulator::Destroy();

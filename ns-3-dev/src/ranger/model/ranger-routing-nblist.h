@@ -32,6 +32,8 @@
 #include <unordered_set>
 #include <unordered_map>
 
+
+// 特化 std::hash 来包含对 ns3::Ipv4Address 的支持
 namespace std {
 template <>
 struct hash<ns3::Ipv4Address> {
@@ -69,8 +71,6 @@ public:
     }
     uint8_t calLqi() const; 
 };
-
-// 特化 std::hash 来包含对 ns3::Ipv4Address 的支持
 
 
 struct NeighborStatus
@@ -174,6 +174,29 @@ class RangerNeighborList
      * \param index target address's index in m_nbStatus.
      */
     bool FindNeighbor(Ipv4Address TargetAddr, uint8_t& index);
+
+    bool isEmpty() const {
+        return m_nbStatus.empty();
+    }
+
+    std::vector<MessageHeader::NodeInfo::LinkMessage> GetOneHopList() {
+        std::vector<MessageHeader::NodeInfo::LinkMessage> oneHopList;
+        for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end(); iter++) {
+            MessageHeader::NodeInfo::LinkMessage link;
+            link.neighborAddresses = iter->neighborMainAddr;
+            link.linkStatus = iter->status;
+            oneHopList.push_back(link);
+        }
+        return oneHopList;
+    }
+
+    /**
+     * Get the two hop Address.
+     * \param targetIndex target Index.
+     */
+    std::vector<MessageHeader::NodeInfo::LinkMessage> GetTwoHopList(uint8_t targetIndex) {
+        return m_nbStatus[targetIndex].twoHopNodeInfo;
+    }
 
     /**
      * Get the Neighbor Node Info.

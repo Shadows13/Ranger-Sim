@@ -215,6 +215,9 @@ void
 RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
     header.linkNumber = m_nbStatus.size();
     for(std::size_t i = 0; i < m_nbStatus.size(); i++) {
+        if(m_nbStatus[i].status == NeighborStatus::STATUS_NONE) {
+            continue;
+        }
         MessageHeader::NodeInfo::LinkMessage linkMsg;
         linkMsg.neighborAddresses = m_nbStatus[i].neighborMainAddr;
         linkMsg.linkStatus = m_nbStatus[i].status;
