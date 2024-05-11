@@ -27,9 +27,10 @@ RangerMac::RangerMac()
     m_macState = ranger::MAC_IDLE;
     ChangeMacState(ranger::MAC_IDLE);
 
-    // 创建一个随机数生成器
+    // 创建一个随机数生成器，从0-255中随机选择一个数作为MAC层的包初始序列号
     Ptr<UniformRandomVariable> uniformVar = CreateObject<UniformRandomVariable>();
-    // 初始化MAC层的包序列号
+    uniformVar->SetAttribute("Min", DoubleValue(0));
+    uniformVar->SetAttribute("Max", DoubleValue(255));
     m_macDsn = SequenceNumber8(uniformVar->GetValue());
 
     // 初始化PHY层指针
@@ -37,7 +38,7 @@ RangerMac::RangerMac()
 
     // 初始化最大重传次数
     m_maxRetryTimes = 2;
-    // 初始化发送队列最大长度 // TODO 改成我们实际的队列最大长度
+    // 初始化发送队列最大长度
     m_maxTxQueueSize = m_txQueue.max_size();
 
     // 初始化正在接收的数据包指针
@@ -59,6 +60,9 @@ RangerMac::RangerMac()
     // 初始化随机退避时间
     m_random = CreateObject<UniformRandomVariable>();
     m_randomBackoffPeriodsLeft = 0;
+
+    // 重传间隔
+    m_resendInterval = Seconds(0.01);
 
     // 初始化发送队列检查定时器
     CheckQueuePeriodically(0.001);
@@ -95,6 +99,8 @@ RangerMac::DoDispose()
     // 清空回调函数
     m_mcpsDataConfirmCallback = MakeNullCallback<void, ranger::McpsDataConfirmParams>();
     m_mcpsDataIndicationCallback = MakeNullCallback<void, ranger::McpsDataIndicationParams, Ptr<Packet>>();
+    m_macSendPktTraceCallback = MakeNullCallback<void, Ipv4Address>();
+    m_macSendTimesTraceCallback = MakeNullCallback<void, Ipv4Address>();
 
     Object::DoDispose();
 }   // RangerMac::Dispose
@@ -120,6 +126,10 @@ RangerMac::McpsDataRequest(ranger::McpsDataRequestParams params, Ptr<Packet> p)
     }
 
     // 创建MAC头部并设置包序列号
+    if (m_macDsn.GetValue() == 0)
+    {
+        m_macDsn++;
+    }
     RangerMacHeader macHdr(RangerMacHeader::RANGER_MAC_RESERVED, m_macDsn.GetValue());
     m_macDsn++;
 
@@ -149,21 +159,30 @@ RangerMac::McpsDataRequest(ranger::McpsDataRequestParams params, Ptr<Packet> p)
     
     // 定义发送队列元素
     Ptr<TxQueueElement> txQElement = Create<TxQueueElement>();
-    txQElement->txQMsduHandle = params.m_msduHandle;
+    // txQElement->txQMsduHandle = params.m_msduHandle;
     txQElement->txQPkt = p;
     // 根据包类型决定包是否重发
     if (!macHdr.IsAckReq())
     {   // 不需要ACK的包不重发
+        txQElement->txQMsduHandle = 0;  // 表示不需要重发
         txQElement->retryTimes = m_maxRetryTimes;
     }
     else
     {   // 需要ACK的包进行重发
-        txQElement->retryTimes = 0;        
+        txQElement->txQMsduHandle = 1;  // 表示需要重发
+        txQElement->retryTimes = 0;
+        if (!m_macSendPktTraceCallback.IsNull())
+        {
+            m_macSendPktTraceCallback(m_address);
+        }
     }
 
     // 将包加入发送队列
-    EnqueueTxQElement(txQElement);
-    // CheckQueue();   // 已改成定时器触发
+    // EnqueueTxQElement(txQElement);
+    m_BE = m_macMinBE;
+    Time randomBackoff = CalRandomBackoff();
+    Simulator::Schedule(randomBackoff, &RangerMac::EnqueueTxQElement, this, txQElement);
+    // CheckQueue();
 }   // RangerMac::McpsDataRequest
 
 void
@@ -172,6 +191,12 @@ RangerMac::PdDataIndication(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi)
     NS_ASSERT(m_macState == ranger::MAC_IDLE || m_macState == ranger::MAC_CSMA);
     NS_LOG_FUNCTION(this << psduLength << p << (uint16_t)lqi);
 
+    if (m_macState == ranger::MAC_CSMA)
+    {
+        NS_LOG_INFO("[MAC][" << m_address << "] Recv packet in CSMA state, drop it");
+        return;
+    }
+
     // 保存原始包
     Ptr<Packet> originalPkt = p->Copy();
 
@@ -179,33 +204,55 @@ RangerMac::PdDataIndication(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi)
     RangerMacHeader macHdr;
     p->RemoveHeader(macHdr);
 
+    // 检查是否需要回复ACK
+    if (macHdr.GetType() == RangerMacHeader::RANGER_MAC_BROADCAST &&
+        macHdr.GetDstAddr() == m_address &&
+        macHdr.IsAckReq())
+    {
+        m_rxPkt = originalPkt->Copy();
+            SendAck(macHdr.GetSeqNum());
+    }
+
+    // 比较包的类型、源地址和序列号，如果已收到则丢弃
+    for (auto it = m_rxedPkts.begin(); it != m_rxedPkts.end(); it++)
+    {
+        if (it->type == macHdr.GetType() &&
+            it->srcAddr == macHdr.GetSrcAddr() &&
+            it->seq == macHdr.GetSeqNum())
+        {
+            return;
+        }
+    }
+
+    // 将包的源地址和序列号加入已收到的包列表
+    RxedPkt rxedPkt;
+    rxedPkt.type = macHdr.GetType();
+    rxedPkt.srcAddr = macHdr.GetSrcAddr();
+    rxedPkt.seq = macHdr.GetSeqNum();
+    m_rxedPkts.emplace_front(rxedPkt);
+    // 如果已收到包队列长度大于50，则删除第一个元素
+    if (m_rxedPkts.size() > 50)
+    {
+        m_rxedPkts.pop_back();
+    }
+
     // 收到ACK包且目的地址是本机
     if (macHdr.GetType() == RangerMacHeader::RANGER_MAC_ACK &&
         macHdr.GetDstAddr() == m_address)
     {
-        NS_LOG_INFO("At: " << Simulator::Now()
-                    << " [MAC_ADDR]: " << m_address
-                    << " received ACK! " << " [seq]: " << (uint32_t)macHdr.GetSeqNum());
-        // 将收到的ACK包的序列号和发送队列中的数据包的序列号进行比较
-        // 如果存在相同的序列号则将发送队列中的这个数据包移除
-        for (auto it = m_txQueue.begin(); it != m_txQueue.end(); it++)
-        {
-            RangerMacHeader hdr;
-            (*it)->txQPkt->PeekHeader(hdr);
-            if (hdr.GetSeqNum() == macHdr.GetSeqNum())
-            {
-                m_txQueue.erase(it);
-                break;
-            }
-        }
+        NS_LOG_INFO("[MAC][" << m_address << "](R-AT +" << Simulator::Now().GetMilliSeconds() << "ms)"
+                    << " type: ACK  Src-Addr: [" << macHdr.GetSrcAddr() << "] " 
+                    << "[seq]: " << (uint32_t)macHdr.GetSeqNum() << " Lqi: " << (uint32_t)lqi);
+        // 移除该ACK包对应的数据包
+        DequeueTxQElement(macHdr.GetSeqNum());
     }
     // 收到广播包或目标地址为本机的单播报，向上层传递数据
     else if (macHdr.GetType() == RangerMacHeader::RANGER_MAC_BROADCAST ||
              (macHdr.GetType() == RangerMacHeader::RANGER_MAC_UNICAST && macHdr.GetDstAddr() == m_address))
     {
-        NS_LOG_INFO("At: " << Simulator::Now()
-                    << " [MAC_ADDR]: " << m_address
-                    << " received DATA " << " [seq]: " << (uint32_t)macHdr.GetSeqNum());
+        NS_LOG_INFO("[MAC][" << m_address << "](R-AT +" << Simulator::Now().GetMilliSeconds() << "ms)"
+                    << " type: DATA Src-Addr: [" << macHdr.GetSrcAddr() << "] " 
+                    << "[seq]: " << (uint32_t)macHdr.GetSeqNum() << " Lqi: " << (uint32_t)lqi);
 
         // 记录接收到的数据包的相关参数
         ranger::McpsDataIndicationParams indicationParams;
@@ -217,13 +264,6 @@ RangerMac::PdDataIndication(uint32_t psduLength, Ptr<Packet> p, uint8_t lqi)
         if (!m_mcpsDataIndicationCallback.IsNull())
         {   // 通知上层数据接收
             m_mcpsDataIndicationCallback(indicationParams, p);
-        }
-
-        // 检查是否需要回复ACK
-        if (macHdr.IsAckReq() && macHdr.GetDstAddr() == m_address)
-        {
-            m_rxPkt = originalPkt->Copy();
-            SendAck(macHdr.GetSeqNum());
         }
     }
     else
@@ -239,79 +279,97 @@ void
 RangerMac::PdDataConfirm(LrWpanPhyEnumeration status)
 {
     NS_ASSERT(m_macState == ranger::MAC_SENDING);
+    NS_ASSERT_MSG(!m_txQueue.empty(), "TxQSize = 0");
     NS_LOG_FUNCTION(this << status << m_txQueue.size());
 
     // 获取正在发送的数据包的头部
     RangerMacHeader macHdr;
     m_txPkt->PeekHeader(macHdr);
 
-    if (status == IEEE_802_15_4_PHY_SUCCESS)
-    {
-        if (!macHdr.IsAck())
+    if (macHdr.IsAck()) // The packet sent was a ACK
+    {   
+        if (status == IEEE_802_15_4_PHY_SUCCESS)
         {
-            // 记录发送成功的数据包
-            m_macTxOkTrace(m_txPkt);
-            // 从发送队列中取出发送成功的数据包
-            NS_ASSERT_MSG(!m_txQueue.empty(), "TxQSize = 0");
-            Ptr<TxQueueElement> txQElement = m_txQueue.front();
-            // 通知上层数据发送成功
-            if (!m_mcpsDataConfirmCallback.IsNull())
-            {
-                ranger::McpsDataConfirmParams confirmParams;
-                confirmParams.m_msduHandle = txQElement->txQMsduHandle;
-                confirmParams.m_status = RangerMacStatus::SUCCESS;
-                m_mcpsDataConfirmCallback(confirmParams);
-            }
-            // 未达到最大重传次数，重新放入发送队列
-            if (txQElement->retryTimes < m_maxRetryTimes)
-            {
-                // 重传
-                Ptr<TxQueueElement> copyElement = Create<TxQueueElement>();
-                copyElement->txQMsduHandle = txQElement->txQMsduHandle;
-                copyElement->retryTimes = txQElement->retryTimes + 1;
-                copyElement->txQPkt = txQElement->txQPkt->Copy();
-                EnqueueTxQElement(copyElement);
-            }
-            // 将发送成功的数据包从发送队列中移除
-            RemoveFirstTxQElement();
-        }
-        else    // The packet sent was a ACK
-        {   
-            // ACK不应该从这个地方触发发送
-            NS_LOG_DEBUG("packet send error!");
-            
-        }
-        // 清空发送数据包的指针
-        m_txPkt = nullptr;
-    }
-    else if (status == IEEE_802_15_4_PHY_UNSPECIFIED)
-    {
-        if (!macHdr.IsAck())
-        {
-            NS_ASSERT_MSG(!m_txQueue.empty(), "TxQSize = 0");
-            Ptr<TxQueueElement> txQElement = m_txQueue.front();
-            m_macTxDropTrace(txQElement->txQPkt);
-            if (!m_mcpsDataConfirmCallback.IsNull())
-            {
-                ranger::McpsDataConfirmParams confirmParams;
-                confirmParams.m_msduHandle = txQElement->txQMsduHandle;
-                confirmParams.m_status = RangerMacStatus::FRAME_TOO_LONG;   // TODO
-                m_mcpsDataConfirmCallback(confirmParams);
-            }
-            RemoveFirstTxQElement();    // TODO 这里是否需要加重试
+            NS_LOG_INFO("[MAC][" << m_address << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)"
+                        << " type: ACK  Dst-Addr: [" << macHdr.GetDstAddr() << "] " 
+                        << "[seq]: " << (uint32_t)macHdr.GetSeqNum());
         }
         else
         {
-            NS_LOG_ERROR("Unable to send ACK");
+            NS_LOG_INFO("[MAC][" << m_address << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)"
+                        << " type: ACK  Dst-Addr: [" << macHdr.GetDstAddr() << "] " 
+                        << "[seq]: " << (uint32_t)macHdr.GetSeqNum() << " Failed");
         }
+        // 将此次发送的ACK包从发送队列中移除
+        DequeueTxQElement();
     }
     else
     {
-        // Something went really wrong. The PHY is not in the correct state for
-        // data transmission.
-        NS_FATAL_ERROR("Transmission attempt failed with PHY status " << status);
+        // 从发送队列中取出本次发送的包
+        Ptr<TxQueueElement> txQElement = Create<TxQueueElement>();
+        for (auto it = m_txQueue.begin(); it != m_txQueue.end(); it++)
+        {
+            if ((*it)->txNow == true)
+            {
+                txQElement = *it;
+                break;
+            }
+        }
+        // 成功发送，打印相关信息
+        if (status == IEEE_802_15_4_PHY_SUCCESS)
+        {
+            // 发送的是一个心跳包
+            if (txQElement->txQMsduHandle == 0)
+            {
+                NS_LOG_INFO("[MAC][" << m_address << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)"
+                            << " type: HRTB Dst-Addr: [" << macHdr.GetDstAddr() << "] " 
+                            << "[seq]: " << (uint32_t)macHdr.GetSeqNum());
+            }
+            else    // 发送的是一个数据包
+            {
+                NS_LOG_INFO("[MAC][" << m_address << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)"
+                            << " type: DATA Dst-Addr: [" << macHdr.GetDstAddr() << "] " 
+                            << "[seq]: " << (uint32_t)macHdr.GetSeqNum());
+            }
+        }
+        // 通知上层数据包发送情况
+        if (!m_mcpsDataConfirmCallback.IsNull())
+        {
+            ranger::McpsDataConfirmParams confirmParams;
+            confirmParams.m_msduHandle = txQElement->txQMsduHandle;
+            if (status == IEEE_802_15_4_PHY_SUCCESS)
+            {
+                // 记录发送成功的数据包
+                m_macTxOkTrace(m_txPkt);
+                confirmParams.m_status = RangerMacStatus::SUCCESS;
+                confirmParams.sendTimes = txQElement->retryTimes + 1;
+            }
+            else if (status == IEEE_802_15_4_PHY_UNSPECIFIED)
+            {
+                confirmParams.m_status = RangerMacStatus::FRAME_TOO_LONG;   // TODO
+            }
+            else
+            {
+                NS_LOG_ERROR("Transmission attempt failed with PHY status " << status);
+                confirmParams.m_status = RangerMacStatus::TRANSACTION_OVERFLOW;   // TODO
+            }
+            m_mcpsDataConfirmCallback(confirmParams);
+        }
+        // 将发包信息发送给mac-recorder
+        if (!m_macSendTimesTraceCallback.IsNull() &&
+            status == IEEE_802_15_4_PHY_SUCCESS &&
+            txQElement->txQMsduHandle == 1)
+        {
+            m_macSendTimesTraceCallback(m_address);
+        }
+        // 将此次发送的数据包从发送队列中移除
+        RangerMacHeader hdr;
+        txQElement->txQPkt->PeekHeader(hdr);
+        DequeueTxQElement(hdr.GetSeqNum());
     }
-
+    // 清空发送数据包的指针
+    m_txPkt = nullptr;
+    // 将MAC层状态设置为IDLE
     m_setMacState.Cancel();
     m_setMacState = Simulator::ScheduleNow(&RangerMac::SetMacState, this, ranger::MAC_IDLE);
 }   // RangerMac::PdDataConfirm
@@ -320,9 +378,9 @@ void
 RangerMac::PlmeSetTRXStateConfirm(LrWpanPhyEnumeration status)
 {
     NS_LOG_FUNCTION(this << status);
-    NS_LOG_DEBUG("At: " << Simulator::Now()
-                  << " [MAC_ADDR]: " << m_address
-                  << " Received Set TRX Confirm: " << status);
+    NS_LOG_FUNCTION("At: " << Simulator::Now()
+                    << " [MAC_ADDR]: " << m_address
+                    << " Received Set TRX Confirm: " << status);
 
     if (m_macState == ranger::MAC_SENDING &&
         (status == IEEE_802_15_4_PHY_TX_ON || status == IEEE_802_15_4_PHY_SUCCESS))
@@ -374,30 +432,31 @@ RangerMac::PlmeCcaConfirm(LrWpanPhyEnumeration status)
     // Only react on this event, if we are actually waiting for a CCA.
     // If the CSMA algorithm was canceled, we could still receive this event from
     // the PHY. In this case we ignore the event.
-    if (m_ccaRequestRunning)
+    if (!m_ccaRequestRunning)
     {
-        m_ccaRequestRunning = false;
-        if (status == IEEE_802_15_4_PHY_IDLE)
+        return;
+    }
+    m_ccaRequestRunning = false;
+    if (status == IEEE_802_15_4_PHY_IDLE)
+    {
+        SetMacState(ranger::CHANNEL_IDLE);
+    }
+    else
+    {
+        m_BE = std::min(static_cast<uint16_t>(m_BE + 1), static_cast<uint16_t>(m_macMaxBE));
+        m_NB++;
+        if (m_NB > m_macMaxCSMABackoffs)
         {
-            SetMacState(ranger::CHANNEL_IDLE);
+            // no channel found so cannot send pkt
+            NS_LOG_ERROR("[MAC][" << m_address << "] Channel access failure");
+            SetMacState(ranger::CHANNEL_ACCESS_FAILURE);
         }
         else
         {
-            m_BE = std::min(static_cast<uint16_t>(m_BE + 1), static_cast<uint16_t>(m_macMaxBE));
-            m_NB++;
-            if (m_NB > m_macMaxCSMABackoffs)
-            {
-                // no channel found so cannot send pkt
-                NS_LOG_DEBUG("Channel access failure");
-                SetMacState(ranger::CHANNEL_ACCESS_FAILURE);
-            }
-            else
-            {
-                NS_LOG_DEBUG("Perform another backoff; m_NB = " << static_cast<uint16_t>(m_NB));
-                m_randomBackoffEvent =
-                    Simulator::ScheduleNow(&RangerMac::RandomBackoffDelay,
-                                           this); // Perform another backoff (step 2)
-            }
+            NS_LOG_FUNCTION("Perform another backoff; m_NB = " << static_cast<uint16_t>(m_NB));
+            m_randomBackoffEvent =
+                Simulator::ScheduleNow(&RangerMac::RandomBackoffDelay,
+                                        this); // Perform another backoff (step 2)
         }
     }
 }   // RangerMac::PlmeCcaConfirm
@@ -447,8 +506,22 @@ RangerMac::SetMcpsDataIndicationCallback(ranger::McpsDataIndicationCallback c)
 }   // RangerMac::SetMcpsDataIndicationCallback
 
 void
+RangerMac::SetMacSendPktTraceCallback(MacSendPktTraceCallback c)
+{
+    m_macSendPktTraceCallback = c;
+}   // RangerMac::SetMacSendTraceCallback
+
+void
+RangerMac::SetMacSendTimesTraceCallback(MacSendTimesTraceCallback c)
+{
+    m_macSendTimesTraceCallback = c;
+}   // RangerMac::SetMacSendTimesTraceCallback
+
+void
 RangerMac::EnqueueTxQElement(Ptr<TxQueueElement> txQElement)
 {
+    NS_LOG_FUNCTION(this);
+
     // 如果发送队列未满，则将数据包加入发送队列尾部
     if (m_txQueue.size() < m_maxTxQueueSize)
     {
@@ -464,38 +537,72 @@ RangerMac::EnqueueTxQElement(Ptr<TxQueueElement> txQElement)
             confirmParams.m_status = RangerMacStatus::TRANSACTION_OVERFLOW;
             m_mcpsDataConfirmCallback(confirmParams);
         }
-        NS_LOG_DEBUG("TX Queue with size " << m_txQueue.size() << " is full, dropping packet");
+        NS_LOG_ERROR("TX Queue with size " << m_txQueue.size() << " is full, dropping packet");
         m_macTxDropTrace(txQElement->txQPkt);
     }
 }   // RangerMac::EnqueueTxQElement
 
 void
+RangerMac::DequeueTxQElement()
+{
+    NS_LOG_FUNCTION(this << "ACK");
+
+    m_txQueue.pop_front();
+}
+
+void
+RangerMac::DequeueTxQElement(uint8_t seqNum)
+{
+    NS_LOG_FUNCTION(this << "DATA");
+
+    for (auto it = m_txQueue.begin(); it != m_txQueue.end(); it++)
+    {
+        RangerMacHeader hdr;
+        (*it)->txQPkt->PeekHeader(hdr);
+        if (hdr.GetSeqNum() == seqNum)
+        {
+            m_txQueue.erase(it);
+            break;
+        }
+    }
+}   // RangerMac::DequeueTxQElement
+
+void
 RangerMac::CheckQueue()
 {
-    NS_LOG_FUNCTION(this);
-
-    // NS_LOG_UNCOND("CheckQueue");
-    // // 输出队列中的包类型和包序列
-    // for (auto it = m_txQueue.begin(); it != m_txQueue.end(); it++)
-    // {
-    //     RangerMacHeader hdr;
-    //     (*it)->txQPkt->PeekHeader(hdr);
-    //     NS_LOG_UNCOND("Type: " << hdr.GetType() << " Seq: " << (uint32_t)hdr.GetSeqNum());
-    // }
-
-    if (m_txQueue.empty())
+    if (m_txQueue.empty() ||                // 如果发送队列为空，return
+        m_macState != ranger::MAC_IDLE ||   // 如果MAC状态不是IDLE，return
+        m_setMacState.IsRunning())          // 如果正在改变MAC状态，return
     {
         return;
     }
 
-    // Pull a packet from the queue and start sending if we are not already sending.
-    if (m_macState == ranger::MAC_IDLE && !m_setMacState.IsRunning())
-    {
-        Ptr<TxQueueElement> txQElement = m_txQueue.front();
-        m_txPkt = txQElement->txQPkt;
+    NS_LOG_FUNCTION(this);
 
-        m_setMacState =
-            Simulator::ScheduleNow(&RangerMac::SetMacState, this, ranger::MAC_CSMA);
+    // 遍历发送队列
+    for (auto it = m_txQueue.begin(); it != m_txQueue.end(); it++)
+    {
+        // 如果还未到达这个包的重发时间，跳过
+        if ((*it)->lastTxTime + m_resendInterval > Simulator::Now())
+        {
+            continue;
+        }
+        
+        // 满足发送条件，开始发包
+        m_txPkt = (*it)->txQPkt;
+        (*it)->txNow = true;
+        m_setMacState = Simulator::ScheduleNow(&RangerMac::SetMacState, this, ranger::MAC_CSMA);
+        // 检查此包是否能够重发，若能够重发则再次进入队列
+        if ((*it)->retryTimes < m_maxRetryTimes)
+        {
+            Ptr<TxQueueElement> copyElement = Create<TxQueueElement>();
+            copyElement->txQMsduHandle = (*it)->txQMsduHandle;
+            copyElement->lastTxTime = Simulator::Now();
+            copyElement->retryTimes = (*it)->retryTimes + 1;
+            copyElement->txQPkt = (*it)->txQPkt->Copy();
+            EnqueueTxQElement(copyElement);
+        }
+        break;
     }
 }   // RangerMac::CheckQueue
 
@@ -505,27 +612,6 @@ RangerMac::CheckQueuePeriodically(double t)
     CheckQueue();
     Simulator::Schedule(Seconds(t), &RangerMac::CheckQueuePeriodically, this, t);
 }   // RangerMac::CheckQueuePeriodically
-
-void
-RangerMac::RemoveFirstTxQElement()
-{
-    Ptr<TxQueueElement> txQElement = m_txQueue.front();
-    Ptr<const Packet> p = txQElement->txQPkt;
-    // m_numCsmacaRetry += m_csmaCa->GetNB() + 1;   // TODO
-
-    Ptr<Packet> pkt = p->Copy();
-    RangerMacHeader hdr;
-    pkt->RemoveHeader(hdr);
-    // m_sentPktTrace(p, m_retransmission + 1, m_numCsmacaRetry);   // TODO
-
-    txQElement->txQPkt = nullptr;
-    txQElement = nullptr;
-    m_txQueue.pop_front();
-    m_txPkt = nullptr;
-    // m_retransmission = 0;
-    // m_numCsmacaRetry = 0;
-    m_macTxDequeueTrace(p);
-}   // RangerMac::RemoveFirstTxQElement
 
 void
 RangerMac::SendAck(uint8_t seqNum)
@@ -545,32 +631,27 @@ RangerMac::SendAck(uint8_t seqNum)
     Ptr<Packet> ackPacket = Create<Packet>(0);
     ackPacket->AddHeader(macHdr);
 
-    // 直接发送ACK包
-    NS_ASSERT(m_macState == ranger::MAC_IDLE);
-    m_txPkt = ackPacket;
-    ChangeMacState(ranger::MAC_SENDING);
-    m_phy->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_TX_ON);
-
     // 将ACK包放入发送队列队首
-    // Ptr<TxQueueElement> txQElement = Create<TxQueueElement>();
-    // txQElement->txQPkt = ackPacket;
-    // // 如果发送队列未满，则将数据包加入发送队列头部
-    // if (m_txQueue.size() < m_maxTxQueueSize)
-    // {
-    //     m_txQueue.emplace_front(txQElement);
-    // }
-    // else    //  如果发送队列已满，则丢弃数据包
-    // {
-    //     NS_LOG_DEBUG("TX Queue with size " << m_txQueue.size() << " is full, dropping ACK packet");
-    //     m_macTxDropTrace(txQElement->txQPkt);
-    // }
+    Ptr<TxQueueElement> txQElement = Create<TxQueueElement>();
+    txQElement->txQPkt = ackPacket;
+    txQElement->retryTimes = m_maxRetryTimes;
+    // 如果发送队列未满，则将数据包加入发送队列头部
+    if (m_txQueue.size() < m_maxTxQueueSize)
+    {
+        m_txQueue.emplace_front(txQElement);
+    }
+    else    // 如果发送队列已满，则丢弃数据包
+    {
+        NS_LOG_ERROR("TX Queue with size " << m_txQueue.size() << " is full, dropping ACK packet");
+        m_macTxDropTrace(txQElement->txQPkt);
+    }
 }   // RangerMac::SendAck
 
 void
 RangerMac::ChangeMacState(ranger::MacState newState)
 {
-    NS_LOG_LOGIC(this << " change mac state from " << m_macState
-                      << " to " << newState);
+    NS_LOG_FUNCTION(this << " change mac state from " << m_macState
+                    << " to " << newState);
     m_macStateLogger(m_macState, newState);
     m_macState = newState;
 }   // RangerMac::ChangeMacState
@@ -605,13 +686,13 @@ RangerMac::SetMacState(ranger::MacState macState)
 
         // Cannot find a clear channel, drop the current packet
         // and send the proper confirm/indication according to the packet type
-        NS_LOG_DEBUG(this << " cannot find clear channel");
+        NS_LOG_ERROR("[MAC][" << m_address << "] Can't find clear channel");
 
         m_macTxDropTrace(m_txPkt);
 
         Ptr<Packet> pkt = m_txPkt->Copy();
         RangerMacHeader macHdr;
-        pkt->RemoveHeader(macHdr);
+        pkt->PeekHeader(macHdr);
 
         if (!m_mcpsDataConfirmCallback.IsNull())
         {
@@ -621,7 +702,7 @@ RangerMac::SetMacState(ranger::MacState macState)
             m_mcpsDataConfirmCallback(confirmParams);
         }
         // remove the copy of the packet that was just sent
-        RemoveFirstTxQElement();
+        DequeueTxQElement(macHdr.GetSeqNum());
         
         ChangeMacState(ranger::MAC_IDLE);
         m_phy->PlmeSetTRXStateRequest(IEEE_802_15_4_PHY_RX_ON);
@@ -639,8 +720,8 @@ RangerMac::CSMACAStart()
     m_randomBackoffEvent = Simulator::ScheduleNow(&RangerMac::RandomBackoffDelay, this);
 }   // RangerMac::CSMACAStart
 
-void
-RangerMac::RandomBackoffDelay()
+Time
+RangerMac::CalRandomBackoff()
 {
     NS_LOG_FUNCTION(this);
 
@@ -657,7 +738,17 @@ RangerMac::RandomBackoffDelay()
     randomBackoff =
         Seconds((double)(m_randomBackoffPeriodsLeft * ranger::aUnitBackoffPeriod) / symbolRate);
 
-    NS_LOG_DEBUG("Unslotted CSMA-CA: requesting CCA after backoff of "
+    return randomBackoff;
+}   // RangerMac::CalRandomBackoff
+
+void
+RangerMac::RandomBackoffDelay()
+{
+    NS_LOG_FUNCTION(this);
+
+    Time randomBackoff = CalRandomBackoff();
+
+    NS_LOG_FUNCTION("Unslotted CSMA-CA: requesting CCA after backoff of "
                     << m_randomBackoffPeriodsLeft << " periods (" << randomBackoff.As(Time::S)
                     << ")");
     // 请求信道空闲检测

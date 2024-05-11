@@ -398,9 +398,322 @@ RangerNeighborList::GetSourceAssignNeighbor(MessageHeader::AudioData& header) {
     }
 }
 
+Ipv4Address
+RangerNeighborList::GetAckNeighbor(Ipv4Address srcAddr) const
+{
+    Ipv4Address dstAddr = Ipv4Address("255.255.255.255");   // 默认使用广播地址
+    std::vector<Ipv4Address> targetAddr;    // 存储有效邻居节点的地址
+    std::vector<uint8_t> targetLqi;         // 存储相应节点的Lqi
+
+#if 0   // 仅排除源节点
+
+    for(auto it = m_nbStatus.begin(); it != m_nbStatus.end(); it++)
+    {
+        if (it->status != NeighborStatus::STATUS_NONE &&
+            it->neighborMainAddr != srcAddr)
+        {
+            targetAddr.push_back(it->neighborMainAddr);
+            targetLqi.push_back(it->lqi);
+        }
+    }
+
+#elif 1 // 排除源节点及其一级邻居节点
+
+    // 存储源节点的一级邻居节点地址
+    std::vector<Ipv4Address> srcNeighborsAddr;
+
+    // 遍历邻居节点列表，找到源节点的一级邻居节点
+    for(auto it = m_nbStatus.begin(); it != m_nbStatus.end(); it++)
+    {
+        if (it->neighborMainAddr == srcAddr)    // 找到源节点
+        {
+            for(auto jt = it->twoHopNodeInfo.begin(); jt != it->twoHopNodeInfo.end(); jt++)
+            {
+                if (jt->linkStatus != NeighborStatus::STATUS_NONE)
+                {
+                    srcNeighborsAddr.push_back(jt->neighborAddresses);
+                }
+            }
+            break;
+        }
+    }
+
+    // 遍历邻居节点信息表，收集除源节点及其一级邻居之外的有效邻居节点
+    for(auto it = m_nbStatus.begin(); it != m_nbStatus.end(); it++)
+    {
+        bool isSrcNeighbor = false;
+        for (uint8_t i = 0; i < srcNeighborsAddr.size(); i++)
+        {
+            if (it->neighborMainAddr == srcNeighborsAddr[i])
+            {
+                isSrcNeighbor = true;
+                break;
+            }
+        }
+        if (it->status != NeighborStatus::STATUS_NONE &&
+            it->neighborMainAddr != srcAddr && !isSrcNeighbor)
+        {
+            targetAddr.push_back(it->neighborMainAddr);
+            targetLqi.push_back(it->lqi);
+        }
+    }
+
+#else   // 不进行排除
+
+    for(auto it = m_nbStatus.begin(); it != m_nbStatus.end(); it++)
+    {
+        if (it->status != NeighborStatus::STATUS_NONE)
+        {
+            targetAddr.push_back(it->neighborMainAddr);
+            targetLqi.push_back(it->lqi);
+        }
+    }
+
+#endif
+
+    // 无有效邻居节点，返回广播地址
+    if (targetAddr.size() == 0)
+    {
+        return dstAddr;
+    }
+
+#if 0   // 选择策略 I: 选择LQI最差的节点
+
+    uint8_t worstLqi = 255; // 初始化为最大可能的链路质量值
+    for (int idx = 0; idx < targetAddr.size(); ++idx)
+    {
+        if (targetLqi[idx] < worstLqi)
+        {
+            worstLqi = targetLqi[idx];
+            dstAddr = targetAddr[idx]; // 更新最差链路质量节点的地址
+        }
+    }
+
+#elif 0 // 选择策略 II: 在LQI排序的后50%节点中随机选择
+
+    // 对节点进行冒泡排序，按链路质量升序排列
+    for (int i = 0; i < targetAddr.size() - 1; i++)
+    {
+        for (int j = 0; j < targetAddr.size() - i - 1; j++)
+        {
+            if (targetLqi[j] > targetLqi[j + 1])
+            {
+                // 交换LQI
+                uint8_t tempLqi = targetLqi[j];
+                targetLqi[j] = targetLqi[j + 1];
+                targetLqi[j + 1] = tempLqi;
+
+                // 交换地址
+                Ipv4Address tempAddr = targetAddr[j];
+                targetAddr[j] = targetAddr[j + 1];
+                targetAddr[j + 1] = tempAddr;
+            }
+        }
+    }
+    // 确定候选节点集: 选择链路质量最高的前50%的节点
+    uint8_t candidateCount = (targetAddr.size() * 0.5 > 1) ? (uint8_t)(targetAddr.size() * 0.5) : 1; // 至少选择一个节点
+    // 初始化随机数生成器
+    srand(time(NULL));
+    
+#if 0   // 权重相同
+
+    dstAddr = targetAddr[rand() % candidateCount];  // 随机选择
+
+#elif 1 // LQI越高，权重越高
+    
+    uint16_t totalLqi = 0;  // 候选节点集的链路质量之和
+    for (int i = 0; i < candidateCount; i++)
+    {
+        totalLqi += targetLqi[i];
+    }
+    // 加权随机选择
+    uint16_t randomLqi = rand() % totalLqi; // 生成0到总链路质量之间的随机数
+    uint16_t cumulativeLqi = 0;             // 累计链路质量
+    for (int i = 0; i < candidateCount; i++)
+    {
+        cumulativeLqi += targetLqi[i];
+        // 根据累计链路质量选择节点
+        if (randomLqi < cumulativeLqi)
+        {
+            dstAddr = targetAddr[i];
+            break;
+        }
+    }
+
+#else   // LQI越低，权重越高
+
+    uint16_t totalLqi = 0;  // 候选节点集的链路质量之和
+    for (int i = 0; i < candidateCount; i++)
+    {   
+        // TODO 考虑LQI=255
+        totalLqi += (256 - (int)targetLqi[i]);     // LQI越低，权重越高
+    }
+    // 加权随机选择
+    uint16_t randomLqi = rand() % totalLqi; // 生成0到总链路质量之间的随机数
+    uint16_t cumulativeLqi = 0;             // 累计链路质量
+    for (int i = 0; i < candidateCount; i++)
+    {
+        cumulativeLqi += (256 - (int)targetLqi[i]);
+        // 根据累计链路质量选择节点
+        if (randomLqi < cumulativeLqi)
+        {
+            dstAddr = targetAddr[i];
+            break;
+        }
+    }
+
+#endif
+
+#elif 1 // 选择策略 III: 选择LQI最好的节点
+
+    uint8_t bestLqi = 0; // 初始化最好的链路质量值
+    for (int idx = 0; idx < targetAddr.size(); ++idx)
+    {
+        if (targetLqi[idx] > bestLqi)
+        {
+            bestLqi = targetLqi[idx];
+            dstAddr = targetAddr[idx]; // 更新最佳地址
+        }
+    }
+
+#elif 0 // 选择策略 IV: 在LQI排序的前50%节点中随机选择
+
+        // 对节点进行冒泡排序，按链路质量降序排列
+        for (int i = 0; i < targetAddr.size() - 1; i++)
+        {
+            for (int j = 0; j < targetAddr.size() - i - 1; j++)
+            {
+                if (targetLqi[j] < targetLqi[j + 1])
+                {
+                    // 交换LQI
+                    uint8_t tempLqi = targetLqi[j];
+                    targetLqi[j] = targetLqi[j + 1];
+                    targetLqi[j + 1] = tempLqi;
+
+                    // 交换地址
+                    Ipv4Address tempAddr = targetAddr[j];
+                    targetAddr[j] = targetAddr[j + 1];
+                    targetAddr[j + 1] = tempAddr;
+                }
+            }
+        }
+        // 确定候选节点集: 选择链路质量最高的前50%的节点
+        uint8_t candidateCount = (targetAddr.size() * 0.5 > 1) ? (uint8_t)(targetAddr.size() * 0.5) : 1; // 至少选择一个节点
+        // 初始化随机数生成器
+        srand(time(NULL));
+  
+#if 0   // 权重相同
+
+    dstAddr = targetAddr[rand() % candidateCount];  // 随机选择
+
+#elif 0 // LQI越高，权重越高
+    
+    uint16_t totalLqi = 0;  // 候选节点集的链路质量之和
+    for (int i = 0; i < candidateCount; i++)
+    {
+        totalLqi += targetLqi[i];
+    }
+    // 加权随机选择
+    uint16_t randomLqi = rand() % totalLqi; // 生成0到总链路质量之间的随机数
+    uint16_t cumulativeLqi = 0;             // 累计链路质量
+    for (int i = 0; i < candidateCount; i++)
+    {
+        cumulativeLqi += targetLqi[i];
+        // 根据累计链路质量选择节点
+        if (randomLqi < cumulativeLqi)
+        {
+            dstAddr = targetAddr[i];
+            break;
+        }
+    }
+
+#else   // LQI越低，权重越高
+
+    uint16_t totalLqi = 0;  // 候选节点集的链路质量之和
+    for (int i = 0; i < candidateCount; i++)
+    {
+        // TODO LQI=255
+        totalLqi += 256 - targetLqi[i];     // LQI越低，权重越高
+    }
+    // 加权随机选择
+    uint16_t randomLqi = rand() % totalLqi; // 生成0到总链路质量之间的随机数
+    uint16_t cumulativeLqi = 0;             // 累计链路质量
+    for (int i = 0; i < candidateCount; i++)
+    {
+        cumulativeLqi += 256 - targetLqi[i];
+        // 根据累计链路质量选择节点
+        if (randomLqi < cumulativeLqi)
+        {
+            dstAddr = targetAddr[i];
+            break;
+        }
+    }
+
+#endif
+
+#else   // 选择策略 V: 随机选择
+
+    // 初始化随机数生成器
+    srand(time(NULL));
+
+#if 0   // 权重相同
+
+    dstAddr = targetAddr[rand() % targetAddr.size()];  // 随机选择
+
+#elif 0 // LQI越高，权重越高
+    
+    uint16_t totalLqi = 0;  // 候选节点集的链路质量之和
+    for (int i = 0; i < targetAddr.size(); i++)
+    {
+        totalLqi += targetLqi[i];
+    }
+    // 加权随机选择
+    uint16_t randomLqi = rand() % totalLqi; // 生成0到总链路质量之间的随机数
+    uint16_t cumulativeLqi = 0;             // 累计链路质量
+    for (int i = 0; i < targetAddr.size(); i++)
+    {
+        cumulativeLqi += targetLqi[i];
+        // 根据累计链路质量选择节点
+        if (randomLqi < cumulativeLqi)
+        {
+            dstAddr = targetAddr[i];
+            break;
+        }
+    }
+
+#else   // LQI越低，权重越高
+
+    uint16_t totalLqi = 0;  // 候选节点集的链路质量之和
+    for (int i = 0; i < targetAddr.size(); i++)
+    {
+        totalLqi += 256 - targetLqi[i];     // LQI越低，权重越高
+    }
+    // 加权随机选择
+    uint16_t randomLqi = rand() % totalLqi; // 生成0到总链路质量之间的随机数
+    uint16_t cumulativeLqi = 0;             // 累计链路质量
+    for (int i = 0; i < targetAddr.size(); i++)
+    {
+        cumulativeLqi += 256 - targetLqi[i];
+        // 根据累计链路质量选择节点
+        if (randomLqi < cumulativeLqi)
+        {
+            dstAddr = targetAddr[i];
+            break;
+        }
+    }
+
+#endif
+
+#endif
+
+    // NS_LOG_UNCOND("finish select ack");
+    return dstAddr;
+}
+
 void
 RangerNeighborList::Print(std::ostream& os) const
 {
+    os << "\n"; // 输出邻居节点列表前加一行空行，使输出更美观
     os << "----------------[" << m_mainAddr << "]---------------- AT +" << Simulator::Now().GetMilliSeconds() << "ms" << std::endl;
     for(auto iter = m_nbStatus.begin(); iter != m_nbStatus.end(); iter++) {
         os << "[" << iter->neighborMainAddr << "]";

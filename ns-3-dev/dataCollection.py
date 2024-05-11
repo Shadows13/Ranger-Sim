@@ -28,7 +28,7 @@ nodeCntMap = [6, 10, 16]
 seedMap = [[111, 11, 13], [11, 133, 2], [34, 1113, 1]]
 intervalPacket = [0.2, 0.15, 0.12, 0.09, 0.06, 0.04]
 
-output_filename = "simulation_results_hive.csv"  # 定义输出文件名
+output_filename = "simulation_results_tmp2.csv"  # 定义输出文件名
 output_path = os.path.join(os.getcwd(), output_filename)  # 输出文件的路径
 
 # 清除或创建输出文件并写入表头

@@ -5,6 +5,10 @@ set(base_examples
     ranger-test-mac
     ranger-comprehensive-test
     ranger-distance-error-test
+    ranger-error-distance-plot
+    ranger-test-ack-no-forward
+    ranger-test-ack-forward
+    ranger-linkquality-test
 )
 
 foreach(

@@ -17,7 +17,6 @@
  * Author: Gary Pei <guangyu.pei@boeing.com>
  */
 #include <ns3/command-line.h>
-#include <ns3/constant-position-mobility-model.h>
 #include <ns3/log.h>
 #include <ns3/lr-wpan-phy.h>
 #include <ns3/ranger-mac.h>
@@ -26,6 +25,8 @@
 #include <ns3/single-model-spectrum-channel.h>
 #include <ns3/test.h>
 #include <ns3/node.h>
+#include <ns3/netanim-module.h>
+#include <ns3/mobility-module.h>
 
 #include <sstream>
 
@@ -64,8 +65,8 @@ SendOnePacket(Ptr<RangerMac> mac_sender, Ptr<RangerMac> mac_receiver)
 
     ranger::McpsDataRequestParams params;
     // params.m_dstAddr = Ipv4Address("ff.ff.ff.ff");
-    params.m_dstAddr = Ipv4Address("22.22.22.22");
-    params.m_txOptions = 0b000;
+    params.m_dstAddr = mac_receiver->GetAddress();
+    params.m_txOptions = 0b011;
 
     mac_sender->McpsDataRequest(params, p);
 }
@@ -91,6 +92,7 @@ main(int argc, char* argv[])
     // LogComponentEnableAll(LOG_PREFIX_FUNC);
     // LogComponentEnable("LrWpanPhy", LOG_LEVEL_ALL);
     LogComponentEnable("RangerMac", LOG_LEVEL_INFO);
+    // LogComponentEnable("RangerMac", LOG_LEVEL_FUNCTION);
     // LogComponentEnable("SingleModelSpectrumChannel", LOG_LEVEL_ALL);
 
     Ptr<LrWpanPhy> phy_sender = CreateObject<LrWpanPhy>();
@@ -105,9 +107,11 @@ main(int argc, char* argv[])
     // CONFIGURE MOBILITY
     Ptr<ConstantPositionMobilityModel> senderMobility =
         CreateObject<ConstantPositionMobilityModel>();
+        senderMobility->SetPosition(Vector(50, 0, 0));
     phy_sender->SetMobility(senderMobility);
     Ptr<ConstantPositionMobilityModel> receiverMobility =
         CreateObject<ConstantPositionMobilityModel>();
+        receiverMobility->SetPosition(Vector(50, 0, 0));
     phy_receiver->SetMobility(receiverMobility);
 
     Ptr<RangerMac> mac_sender = CreateObject<RangerMac>();
@@ -121,14 +125,30 @@ main(int argc, char* argv[])
     mac_sender->SetMcpsDataIndicationCallback(MakeCallback(&McpsDataIndication));
     mac_receiver->SetMcpsDataIndicationCallback(MakeCallback(&McpsDataIndication));
 
-    Simulator::Schedule(Seconds(1.0), &SendOnePacket, mac_sender, mac_receiver);
-    Simulator::Schedule(Seconds(2.0), &SendOnePacket, mac_sender, mac_receiver);
-    Simulator::Schedule(Seconds(3.0), &SendOnePacket, mac_sender, mac_receiver);
+    // // 创建节点容器
+    // NodeContainer nodes;
+    // nodes.Create(2);
 
-    // Simulator::Schedule(Seconds(1.0), &SendAndReceive, mac_sender, mac_receiver);
-    // Simulator::Schedule(Seconds(1.0), &SendAndReceive, mac_receiver, mac_sender);
+    // // 把phy和mac添加到node上
+    // nodes.Get(0)->AddDevice(phy_sender);
+    // nodes.Get(0)->AddDevice(mac_sender);
+    // nodes.Get(1)->AddDevice(phy_receiver);
+    // nodes.Get(1)->AddDevice(mac_receiver);
 
-    Simulator::Stop(Seconds(10.0));
+    // Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
+    // positionAlloc->Add(Vector(50, 50, 0));
+    // positionAlloc->Add(Vector(50, 100, 0));
+    // MobilityHelper mobility;
+    // mobility.SetPositionAllocator(positionAlloc);
+
+    // Simulator::Schedule(Seconds(1.0), &SendOnePacket, mac_sender, mac_receiver);
+    // Simulator::Schedule(Seconds(2.0), &SendOnePacket, mac_sender, mac_receiver);
+    // Simulator::Schedule(Seconds(3.0), &SendOnePacket, mac_sender, mac_receiver);
+
+    Simulator::Schedule(Seconds(1.0), &SendAndReceive, mac_sender, mac_receiver);
+    Simulator::Schedule(Seconds(1.0), &SendAndReceive, mac_receiver, mac_sender);
+
+    Simulator::Stop(Seconds(4.0));
 
     Simulator::Run();
 

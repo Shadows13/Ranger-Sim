@@ -46,6 +46,7 @@ class MessageHeader : public Header
     {
         NODEINFO_MESSAGE = 1,
         AUDIODATA_MESSAGE = 2,
+        MEMBERHEARTBEAT_MESSAGE = 3,
     };
 
     MessageHeader();
@@ -218,6 +219,50 @@ class MessageHeader : public Header
         }
     };
 
+    /**
+     * \ingroup ranger
+     * MemberHeartbeat Format
+    */
+    struct MemberHeartbeat
+    {
+        /**
+         * item
+         */
+        Ipv4Address mainAddr;
+        uint8_t roadNum; //!< road node messages container.
+        std::vector<Ipv4Address> roadAddr; //!< road node messages container.
+
+        /**
+         * This method is used to print the content of a Hello message.
+         * \param os output stream
+         */
+        void Print(std::ostream& os) const;
+        /**
+         * Returns the expected size of the header.
+         * \returns the expected size of the header.
+         */
+        uint32_t GetSerializedSize() const;
+        /**
+         * This method is used by Packet::AddHeader to
+         * store a header into the byte buffer of a packet.
+         *
+         * \param start an iterator which points to where the header should
+         *        be written.
+         */
+        void Serialize(Buffer::Iterator start) const;
+        /**
+         * This method is used by Packet::RemoveHeader to
+         * re-create a header from the byte buffer of a packet.
+         *
+         * \param start an iterator which points to where the header should
+         *        read from.
+         * \param messageSize the message size.
+         * \returns the number of bytes read.
+         */
+        uint32_t Deserialize(Buffer::Iterator start, uint32_t messageSize);
+    };
+
+
   private:
     /**
      * Structure holding the message content.
@@ -226,6 +271,7 @@ class MessageHeader : public Header
     {
         NodeInfo nodeInfo;     //!< NodeInfo message (optional).
         AudioData audioData;    //!< AudioData message (optional).
+        MemberHeartbeat memberHeartbeat;    //!< MemberHeartbeat message (optional).
     } m_message;     //!< The actual message being carried.
 
   public:
@@ -283,25 +329,35 @@ class MessageHeader : public Header
         return m_message.audioData;
     }
 
+    /**
+     * Set the message type to MemberHeartbeat and return the message content.
+     * \returns The MemberHeartbeat message.
+     */
+    MemberHeartbeat& GetMemberHeartbeat()
+    {
+        if (m_messageType == 0)
+        {
+            m_messageType = MEMBERHEARTBEAT_MESSAGE;
+        }
+        else
+        {
+            NS_ASSERT(m_messageType == MEMBERHEARTBEAT_MESSAGE);
+        }
+        return m_message.memberHeartbeat;
+    }
+
+    /**
+     * Get the MemberHeartbeat message.
+     * \returns The MemberHeartbeat message.
+     */
+    const MemberHeartbeat& GetMemberHeartbeat() const
+    {
+        NS_ASSERT(m_messageType == MEMBERHEARTBEAT_MESSAGE);
+        return m_message.memberHeartbeat;
+    }
+
 };
 
-typedef std::vector<MessageHeader> MessageHeaderList;
-
-inline std::ostream&
-operator<<(std::ostream& os, const MessageHeaderList& messages)
-{
-    os << "[";
-    for (auto messageIter = messages.begin(); messageIter != messages.end(); messageIter++)
-    {
-        messageIter->Print(os);
-        if (messageIter + 1 != messages.end())
-        {
-            os << ", ";
-        }
-    }
-    os << "]";
-    return os;
-}
 
 } // namespace ns3
 

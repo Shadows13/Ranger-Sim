@@ -71,6 +71,9 @@ MessageHeader::GetSerializedSize() const
     case AUDIODATA_MESSAGE:
         size += m_message.audioData.GetSerializedSize();
         break;
+    case MEMBERHEARTBEAT_MESSAGE:
+        size += m_message.memberHeartbeat.GetSerializedSize();
+        break;
     default:
         NS_ASSERT(false);
     }
@@ -83,10 +86,13 @@ MessageHeader::Print(std::ostream& os) const
     switch (m_messageType)
     {
     case NODEINFO_MESSAGE:
-        os << "type: NODEINFO";
+        os << " type: NODE-INFO";
         break;
     case AUDIODATA_MESSAGE:
-        os << "type: AUDIODATA";
+        os << " type: AUDIODATA";
+        break;
+    case MEMBERHEARTBEAT_MESSAGE:
+        os << " type: MEMBERHEARTBEAT";
         break;
     }
 
@@ -100,6 +106,9 @@ MessageHeader::Print(std::ostream& os) const
         break;
     case AUDIODATA_MESSAGE:
         m_message.audioData.Print(os);
+        break;
+    case MEMBERHEARTBEAT_MESSAGE:
+        m_message.memberHeartbeat.Print(os);
         break;
     default:
         NS_ASSERT(false);
@@ -122,6 +131,9 @@ MessageHeader::Serialize(Buffer::Iterator start) const
     case AUDIODATA_MESSAGE:
         m_message.audioData.Serialize(iter);
         break;
+    case MEMBERHEARTBEAT_MESSAGE:
+        m_message.memberHeartbeat.Serialize(iter);
+        break;
     default:
         NS_ASSERT(false);
     }
@@ -137,7 +149,7 @@ MessageHeader::Deserialize(Buffer::Iterator start)
     m_srcAddress = Ipv4Address(iter.ReadNtohU32());
     m_messageLength = iter.ReadU8();
     size = RANGER_MSG_HEADER_SIZE;
-    NS_ASSERT(m_messageType == NODEINFO_MESSAGE || m_messageType == AUDIODATA_MESSAGE);
+    NS_ASSERT(m_messageType == NODEINFO_MESSAGE || m_messageType == AUDIODATA_MESSAGE || m_messageType == MEMBERHEARTBEAT_MESSAGE);
 
     switch (m_messageType)
     {
@@ -146,6 +158,9 @@ MessageHeader::Deserialize(Buffer::Iterator start)
         break;
     case AUDIODATA_MESSAGE:
         size += m_message.audioData.Deserialize(iter, m_messageLength - RANGER_MSG_HEADER_SIZE);
+        break;
+    case MEMBERHEARTBEAT_MESSAGE:
+        size += m_message.memberHeartbeat.Deserialize(iter, m_messageLength - RANGER_MSG_HEADER_SIZE);
         break;
     default:
         NS_ASSERT(false);
@@ -263,6 +278,60 @@ MessageHeader::AudioData::Deserialize(Buffer::Iterator start, uint32_t messageSi
 
     for(int i = 0; i < AssignNum; i++) {
         this->AssignNeighbor.push_back(Ipv4Address(iter.ReadNtohU32()));
+    }
+
+    return messageSize;
+}
+
+
+// ---------------- RANGER MEMBERHEARTBEAT Message -------------------------------
+
+uint32_t
+MessageHeader::MemberHeartbeat::GetSerializedSize() const
+{
+    uint32_t size = 5; // mainAddr For 4 Bytes/roadNum For 1 Bytes
+    size += roadNum * (IPV4_ADDRESS_SIZE);
+
+    return size;
+}
+
+void
+MessageHeader::MemberHeartbeat::Print(std::ostream& os) const
+{
+    os<<" MainAddr: [" << mainAddr << "]";
+    os << " Road: (" << (uint16_t)roadNum << ")";
+    for(auto iter = roadAddr.begin(); iter != roadAddr.end(); iter++) {
+        os << " [" << *iter << "]";
+    }
+}
+
+void
+MessageHeader::MemberHeartbeat::Serialize(Buffer::Iterator start) const
+{
+    Buffer::Iterator iter = start;
+    iter.WriteHtonU32(mainAddr.Get());
+    iter.WriteU8(roadNum); 
+    for (auto i = this->roadAddr.begin(); i != this->roadAddr.end(); i++)
+    {   
+        Ipv4Address Address = *i;
+        iter.WriteHtonU32(Address.Get());
+    }
+}
+
+uint32_t
+MessageHeader::MemberHeartbeat::Deserialize(Buffer::Iterator start, uint32_t messageSize)
+{
+    Buffer::Iterator iter = start;
+
+    NS_ASSERT(messageSize >= 0);
+
+    this->roadAddr.clear();
+
+    this->mainAddr = Ipv4Address(iter.ReadNtohU32());
+    this->roadNum = iter.ReadU8();
+
+    for(int i = 0; i < roadNum; i++) {
+        this->roadAddr.push_back(Ipv4Address(iter.ReadNtohU32()));
     }
 
     return messageSize;

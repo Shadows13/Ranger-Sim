@@ -125,6 +125,23 @@ RangerRecorder::DoCalculation()
 }
 
 void
+RangerRecorder::Clear()
+{
+    m_receiveList.clear();
+    m_sendList.clear();
+    m_forwardList.clear();
+    total_source_cnt = 0;
+    total_forward_cnt = 0;
+    total_receive_cnt = 0;
+    total_should_receive_cnt = 0;
+    total_receive_rate = 0.0;
+    total_forward_cost = 0.0;
+    // total_ratio_forward_receive = 0.0;
+    total_delay = Seconds(0.0);
+    // double total_jitter = 0.0;
+}
+
+void
 RangerRecorder::PrintReceiveList(std::ostream& os)
 {
     os << "-----------------ReceiveList----------------" << std::endl;
@@ -247,6 +264,24 @@ RangerRecorder::PrintGlobalIndicators(std::ostream& os)
     //os << "Total Receive Rate: " << std::setfill('0') << std::setw(5) << std::fixed << std::setprecision(2) << total_receive_rate * 100 << "%" << std::endl;
 
     os << "=================GlobalIndicator=================" << std::endl;
+}
+
+uint64_t
+RangerRecorder::GetTotalSourceCnt() const
+{
+    return total_source_cnt;
+}
+
+uint64_t
+RangerRecorder::GetTotalReceiveCnt() const
+{
+    return total_receive_cnt;
+}
+
+double
+RangerRecorder::GetTotalReceiveRate() const
+{
+    return total_receive_rate;
 }
 
 } // namespace ns3

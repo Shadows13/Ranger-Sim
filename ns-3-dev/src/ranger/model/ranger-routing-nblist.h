@@ -46,7 +46,7 @@ struct hash<ns3::Ipv4Address> {
 namespace ns3
 {
 
-#define MAX_NODEINFO_RECEIVE_RATE_BUFFER (8)
+#define MAX_NODEINFO_RECEIVE_RATE_BUFFER (10)
 class NodeInfoReceiveRateBuffer {
 private:
     std::vector<bool> buffer;
@@ -178,6 +178,20 @@ class RangerNeighborList
     bool isEmpty() const {
         return m_nbStatus.empty();
     }
+    // information request
+    /**
+     * Get Lqi of the target Address. If it exits return lqi if not return 0
+     * \param TargetAddr target address.
+     * \param index target address's index in m_nbStatus.
+     */
+    uint8_t GetNeighborLqi(Ipv4Address TargetAddr) {
+        uint8_t index;
+        if(FindNeighbor(TargetAddr, index)) {
+            return m_nbStatus[index].lqi;
+        }
+        return 0;
+    }
+
 
     std::vector<MessageHeader::NodeInfo::LinkMessage> GetOneHopList() {
         std::vector<MessageHeader::NodeInfo::LinkMessage> oneHopList;
@@ -238,6 +252,11 @@ class RangerNeighborList
      * \param header the packet header.
      */
     void GetSourceAssignNeighbor(MessageHeader::AudioData& header);
+
+    /**
+     * 选择回复ACK的邻居节点
+     */
+    Ipv4Address GetAckNeighbor(Ipv4Address srcAddr) const;
 
     // 
     /**

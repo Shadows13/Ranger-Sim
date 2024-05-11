@@ -65,10 +65,7 @@ class RangerRecorder : public Object
     double total_forward_cost = 0.0;
     //double total_ratio_forward_receive = 0.0;
     Time total_delay = Seconds(0.0);
-    double total_jitter = 0.0;
-
-
-    void DoCalculation();
+    // double total_jitter = 0.0;
 
   public:
     RangerRecorder();
@@ -83,6 +80,9 @@ class RangerRecorder : public Object
     void recordReceive(Ipv4Address receiver, Ipv4Address sender, uint8_t seq, Time time);
     void recordSend(Ipv4Address sender, Ipv4Address origin, uint8_t seq, Time time);
 
+    void DoCalculation();
+    void Clear();
+
     void PrintReceiveList(std::ostream& os);
     void PrintSendList(std::ostream& os);
     void PrintForwardList(std::ostream& os);
@@ -90,6 +90,9 @@ class RangerRecorder : public Object
     void PrintForwardCost(std::ostream& os);
     void PrintGlobalIndicators(std::ostream& os);
 
+    uint64_t GetTotalSourceCnt() const;
+    uint64_t GetTotalReceiveCnt() const;
+    double GetTotalReceiveRate() const;
 };
 
 

@@ -10,6 +10,7 @@
 #include <ns3/random-variable-stream.h>
 #include <ns3/packet.h>
 #include <ns3/simulator.h>
+#include <ns3/timer.h>
 
 #include <deque>
 
@@ -108,6 +109,7 @@ struct McpsDataConfirmParams
     uint8_t m_msduHandle{0};                                        // MSDU handle
     RangerMacStatus m_status{RangerMacStatus::INVALID_PARAMETER};   // The status
                                                                     // of the last MSDU transmission
+    uint8_t sendTimes = 0;                                          // 发送次数
 };
 
 /**
@@ -139,6 +141,20 @@ using McpsDataConfirmCallback = Callback<void, McpsDataConfirmParams>;
 using McpsDataIndicationCallback = Callback<void, McpsDataIndicationParams, Ptr<Packet>>;
 
 }   // namespace ranger
+
+/**
+ * @ingroup ranger
+ * 
+ * @brief 用来传递包数量至mac-recorder
+*/
+using MacSendPktTraceCallback = Callback<void, Ipv4Address>;
+
+/**
+ * @ingroup ranger
+ * 
+ * @brief 用来传递发送次数至mac-recorder
+*/
+using MacSendTimesTraceCallback = Callback<void, Ipv4Address>;
 
 class RangerMac : public Object
 {
@@ -241,6 +257,18 @@ public:
      */
     void SetMcpsDataIndicationCallback(ranger::McpsDataIndicationCallback c);
 
+    /**
+     * @brief 设置发包次数计数器
+     * @param c the callback
+     */
+    void SetMacSendPktTraceCallback(MacSendPktTraceCallback c);
+
+    /**
+     * @brief 设置发送次数计数器
+     * @param c the callback
+     */
+    void SetMacSendTimesTraceCallback(MacSendTimesTraceCallback c);
+
 //  public
 
 protected:
@@ -264,6 +292,16 @@ private:
      * This callback is used to notify incoming packets to the upper layers.
      */
     ranger::McpsDataIndicationCallback m_mcpsDataIndicationCallback;
+
+    /**
+     * 用来传递发包次数至mac-recorder
+     */
+    MacSendPktTraceCallback m_macSendPktTraceCallback;
+
+    /**
+     * 用来传递发送次数至mac-recorder
+     */
+    MacSendTimesTraceCallback m_macSendTimesTraceCallback;
 
     //////////////////////
     // member variables //
@@ -299,6 +337,17 @@ private:
     Ptr<Packet> m_txPkt;
 
     /**
+     * 记录最近收到的包
+     */
+    struct RxedPkt
+    {
+        RangerMacHeader::RangerMacType type;
+        Ipv4Address srcAddr;
+        uint8_t seq;
+    };
+    std::deque<RxedPkt> m_rxedPkts;
+
+    /**
      * The number of already used retransmission for the currently transmitted
      * packet.
      */
@@ -323,9 +372,11 @@ private:
      */
     struct TxQueueElement : public SimpleRefCount<TxQueueElement>
     {
-        uint8_t txQMsduHandle;  // MSDU Handle
-        uint8_t retryTimes = 0;     // Number of retries
-        Ptr<Packet> txQPkt;     // Queued packet
+        uint8_t txQMsduHandle;          // MSDU Handle
+        uint8_t retryTimes = 0;         // Number of retries
+        Time lastTxTime = Seconds(0);   // Time of the last retry
+        bool txNow = false;             // Send immediately
+        Ptr<Packet> txQPkt;             // Queued packet
     };
 
     /**
@@ -339,11 +390,26 @@ private:
     uint32_t m_maxTxQueueSize;
 
     /**
+     * 重发间隔
+     */
+    Time m_resendInterval;
+
+    /**
      * @brief Add an element to the transmission queue.
      *
      * @param txQElement The element added to the Tx Queue.
      */
     void EnqueueTxQElement(Ptr<TxQueueElement> txQElement);
+
+    /**
+     * @brief Remove an ack element of the transmission queue.
+     */
+    void DequeueTxQElement();
+
+    /**
+     * @brief Remove a data element of the transmission queue.
+    */
+    void DequeueTxQElement(uint8_t seqNum);
 
     /**
      * Check the transmission queue. If there are packets in the transmission
@@ -356,12 +422,6 @@ private:
      * CheckQueue()的定时器
     */
     void CheckQueuePeriodically(double t);
-
-    /**
-     * Remove the tip of the transmission queue, including clean up related to the
-     * last packet transmission.
-     */
-    void RemoveFirstTxQElement();
 
     /**
      * Send an acknowledgment packet for the given sequence number.
@@ -452,6 +512,11 @@ private:
      * Start CSMA-CA algorithm (step 1), initialize NB, BE for CSMA-CA
      */
     void CSMACAStart();
+
+    /**
+     * 
+     */
+    Time CalRandomBackoff();
 
     /**
      * In step 2 of the CSMA-CA, perform a random backoff in the range of 0 to 2^BE -1

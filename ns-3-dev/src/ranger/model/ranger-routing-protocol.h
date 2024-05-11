@@ -42,7 +42,26 @@ namespace ns3
 typedef Callback<void, ranger::McpsDataRequestParams, Ptr<Packet>> RangerRoutingProtocolSendCallback;
 typedef Callback<void, Ipv4Address, Ipv4Address, uint8_t, Time> RangerRoutingProtocolReceiveTraceCallback;
 typedef Callback<void, Ipv4Address, Ipv4Address, uint8_t, Time> RangerRoutingProtocolSendTraceCallback;
-
+typedef struct MessageHeaderElement {
+    ranger::McpsDataRequestParams params;
+    MessageHeader hdr;
+} MessageHeaderElement;
+typedef std::vector<MessageHeaderElement> QueueMessageList;
+inline std::ostream&
+operator<<(std::ostream& os, const QueueMessageList& messages)
+{
+    os << "[";
+    for (auto messageIter = messages.begin(); messageIter != messages.end(); messageIter++)
+    {
+        messageIter->hdr.Print(os);
+        if (messageIter + 1 != messages.end())
+        {
+            os << ", ";
+        }
+    }
+    os << "]";
+    return os;
+}
 
 class RangerRoutingProtocol : public Object
 {
@@ -73,6 +92,9 @@ class RangerRoutingProtocol : public Object
      * \param mainAddress IPv4 interface index
      */
     void SetMainAddress(Ipv4Address mainAddress);
+    Ipv4Address GetMainAddress() {
+        return m_mainAddr;
+    }
 
     /**
      * \brief Print the hold neighbor list.
@@ -80,6 +102,9 @@ class RangerRoutingProtocol : public Object
      * \param os std::ostream
      */
     void PrintNeighborList(std::ostream& os);
+    uint8_t GetNeighborLqi(Ipv4Address targetAddr) {
+        return m_nbList.GetNeighborLqi(targetAddr);
+    }
 
     /**
      * Set the MAC to be used by this NetDevice.
@@ -123,7 +148,7 @@ class RangerRoutingProtocol : public Object
     bool isForwardJudge_Hivemesh(const MessageHeader& hdr);
   private:
     // A list of pending messages which are buffered awaiting for being sent.
-    MessageHeaderList m_queuedMessages;
+    QueueMessageList m_queuedMessages;
     Time m_queuedMessagesInterval;
     Timer m_queuedMessagesTimer; //!< timer for throttling outgoing messages
 
@@ -132,7 +157,7 @@ class RangerRoutingProtocol : public Object
      */
     void QueuedMessagesTimerExpire();     //!< timer callback for sending queued messages
     void SendQueuedMessages();            //!< send all queued messages
-    void EnqueueMessage(const MessageHeader& messageHdr, Time delay);   //!< enqueue a message for sending
+    void EnqueueMessage(const MessageHeaderElement payload, Time delay);   //!< enqueue a message for sending
 
 
     RangerRoutingProtocolSendCallback m_sendCallback;
