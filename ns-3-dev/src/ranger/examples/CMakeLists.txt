@@ -9,6 +9,7 @@ set(base_examples
     ranger-test-ack-no-forward
     ranger-test-ack-forward
     ranger-linkquality-test
+    ranger-debug
 )
 
 foreach(

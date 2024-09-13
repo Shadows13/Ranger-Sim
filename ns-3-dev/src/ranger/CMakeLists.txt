@@ -11,6 +11,7 @@ build_lib(
     model/ranger-mac-header.cc
     helper/ranger-recorder.cc
     helper/ranger-mac-recorder.cc
+    helper/ranger-audio-application.cc
   HEADER_FILES
     model/ranger-net-device.h
     model/ranger-routing-protocol.h
@@ -23,6 +24,7 @@ build_lib(
     model/ranger-mac-constants.h
     helper/ranger-recorder.h
     helper/ranger-mac-recorder.h
+    helper/ranger-audio-application.h
   LIBRARIES_TO_LINK ${libspectrum}
                     ${liblr-wpan}
   TEST_SOURCES

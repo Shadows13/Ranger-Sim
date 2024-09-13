@@ -137,17 +137,16 @@ int main(int argc, char *argv[]) {
     uint32_t max_distance = 500;
     double intervalPacket = 0.05;
 
-    for (int i = min_distance; i < max_distance; i += 1) {
+    for (uint32_t i = min_distance; i < max_distance; i += 1) {
         mobilities[1]->SetPosition(Vector(i, 0.0, 0.0));
-        uint32_t tmpTime = 0;
-        for(int j = 0; j < WorkTime / intervalPacket; j++) {
+        for(uint32_t j = 0; j < WorkTime / intervalPacket; j++) {
             Simulator::ScheduleWithContext(1,
                                         Seconds(WaitTime + intervalPacket * j),  // 每0.05秒触发一次
                                         &RangerRoutingProtocol::SourceAudioDataRequest,
                                         devices[0]->GetRoutingProtocol(),
                                         80);
         }
-        for(int j = 0; j < WorkTime; j++) {
+        for(uint32_t j = 0; j < WorkTime; j++) {
             Simulator::ScheduleWithContext(1,
                                         Seconds(WaitTime + j),  // 每0.05秒触发一次
                                         &CalAST,

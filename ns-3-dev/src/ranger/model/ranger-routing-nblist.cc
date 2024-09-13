@@ -34,101 +34,44 @@ NodeInfoReceiveRateBuffer::calLqi() const
     uint8_t total_weight = 0;
     uint8_t lqi_cal = 0;
 
-    if(!isBufferFull()) {
-        total_weight = 0;
-        lqi_cal = 0;
-        for(int j = 0; j < capacity; j++) {
-            if(j == capacity - 1) {
+    for (int j = 0; j < capacity; j++) {
+        int index = head - 1 - j;
+        if (index < 0) {
+            index += capacity;
+        }
+
+        if (j == capacity - 1) {
+            if (buffer[index] == false) {
                 lqi_cal += NO_CONTINUE_SCORE;
+            }
+            total_weight += NO_CONTINUE_SCORE;
+        } else {
+            if (buffer[index] == false) {
+                int prev_index = index - 1;
+                if (prev_index < 0) {
+                    prev_index += capacity;
+                }
+                if (buffer[prev_index] == false) {
+                    lqi_cal += CONTINUE_SCORE;
+                    total_weight += CONTINUE_SCORE;
+                } else {
+                    lqi_cal += NO_CONTINUE_SCORE;
+                    total_weight += NO_CONTINUE_SCORE;
+                }
+            } else {
                 total_weight += NO_CONTINUE_SCORE;
-            } else {
-                if(head - 1 - j > 0) {
-                    if(buffer[head - 1 - j] == false) {
-                        if(buffer[head - 1 - j - 1] == false) {
-                            lqi_cal += CONTINUE_SCORE;
-                            total_weight += CONTINUE_SCORE;
-                        } else {
-                            lqi_cal += NO_CONTINUE_SCORE;
-                            total_weight += NO_CONTINUE_SCORE;
-                        }
-                    } else {
-                        total_weight += NO_CONTINUE_SCORE;
-                    }
-                }
-                else if(head - 1 - j == 0) {
-                    if(buffer[head - 1 - j] == false) {
-                        lqi_cal += NO_CONTINUE_SCORE;
-                        total_weight += NO_CONTINUE_SCORE;
-                    } else {
-                        //lqi_cal += NO_CONTINUE_SCORE;
-                        total_weight += NO_CONTINUE_SCORE;
-                    }
-                }
-                else {
-                    lqi_cal += NO_CONTINUE_SCORE;
-                    total_weight += NO_CONTINUE_SCORE;
-                }
             }
         }
-        return (uint8_t)((1.0 - ((float)lqi_cal / (float)total_weight)) * (float)UINT8_T_LIMIT);
-    } else {
-        total_weight = 0;
-        lqi_cal = 0;
-        for(int j = 0; j < capacity; j++) {
-            if(j == capacity - 1) {
-                if(buffer[head - 1 - j + capacity] == false) {
-                    lqi_cal += NO_CONTINUE_SCORE;
-                    total_weight += NO_CONTINUE_SCORE;
-                } else {
-                    total_weight += NO_CONTINUE_SCORE;
-                }
-            } else {
-                if(head - 1 - j > 0) {
-                    if(buffer[head - 1 - j] == false) {
-                        if(buffer[head - 1 - j - 1] == false) {
-                            lqi_cal += CONTINUE_SCORE;
-                            total_weight += CONTINUE_SCORE;
-                        } else {
-                            lqi_cal += NO_CONTINUE_SCORE;
-                            total_weight += NO_CONTINUE_SCORE;
-                        }
-                    } else {
-                        total_weight += NO_CONTINUE_SCORE;
-                    }
-                } else if(head - 1 - j == 0) {
-                    if(buffer[head - 1 - j] == false) {
-                        if(buffer[head - 1 - j - 1 + capacity] == false) {
-                            lqi_cal += CONTINUE_SCORE;
-                            total_weight += CONTINUE_SCORE;
-                        } else {
-                            lqi_cal += NO_CONTINUE_SCORE;
-                            total_weight += NO_CONTINUE_SCORE;
-                        }
-                    } else {
-                        total_weight += NO_CONTINUE_SCORE;
-                    }
-                } else {
-                    if(buffer[head - 1 - j + capacity] == false) {
-                        if(buffer[head - 1 - j - 1 + capacity] == false) {
-                            lqi_cal += CONTINUE_SCORE;
-                            total_weight += CONTINUE_SCORE;
-                        } else {
-                            lqi_cal += NO_CONTINUE_SCORE;
-                            total_weight += NO_CONTINUE_SCORE;
-                        }
-                    } else {
-                        total_weight += NO_CONTINUE_SCORE;
-                    }
-                }
-            }
-        }
-        return (uint8_t)((1.0 - ((float)lqi_cal / (float)total_weight)) * (float)UINT8_T_LIMIT);
     }
+
+    return (uint8_t)((1.0 - ((float)lqi_cal / (float)total_weight)) * (float)UINT8_T_LIMIT);
 }
 
-RangerNeighborList::RangerNeighborList(Time refreshInterval)
+RangerNeighborList::RangerNeighborList(Time refreshInterval, Time onlineMemberRefreshInterval)
 {
     m_refreshInterval = refreshInterval;
+    m_onlineMemberRefreshInterval = onlineMemberRefreshInterval;
+    m_nbStatus.clear();
 }
 RangerNeighborList::~RangerNeighborList()
 {
@@ -182,12 +125,68 @@ RangerNeighborList::RefreshNeighborNodeStatus(void)
     }
 }
 
+void
+RangerNeighborList::UpdateOnlineMemberStatus(MessageHeader::MemberHeartbeat memberHeartbeatHdr)
+{
+    uint8_t index = 0;
+    if(FindOnlineMember(memberHeartbeatHdr.mainAddr, index)) {
+        m_onlineMemberStatus[index].refreshTime = Simulator::Now();
+    } else {
+        OnlineMemberStatus memberIns = OnlineMemberStatus();
+        memberIns.memberMainAddr = memberHeartbeatHdr.mainAddr;
+        memberIns.refreshTime = Simulator::Now();
+        m_onlineMemberStatus.push_back(memberIns);
+    }
+}
+
+void
+RangerNeighborList::RefreshOnlineMemberStatus(void)
+{
+    Time CurrTime = Simulator::Now();
+    for(auto iter = m_onlineMemberStatus.begin(); iter != m_onlineMemberStatus.end();) {
+        if(CurrTime - iter->refreshTime > m_onlineMemberRefreshInterval * 6) {
+            iter = m_onlineMemberStatus.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+}
+
+bool
+RangerNeighborList::isMemberHeartbeatNew(MessageHeader::MemberHeartbeat memberHeartbeatHdr)
+{
+    uint8_t index = 0;
+    if(FindOnlineMember(memberHeartbeatHdr.mainAddr, index)) {
+        Time CurrTime = Simulator::Now();
+        if(CurrTime - m_onlineMemberStatus[index].refreshTime > m_onlineMemberRefreshInterval) {
+            return true;
+        } else {
+            return false;
+        }
+    } else {
+        return true;
+    }
+}
+
 bool
 RangerNeighborList::FindNeighbor(Ipv4Address TargetAddr, uint8_t& index)
 {
     for(std::size_t i = 0; i < m_nbStatus.size(); i++) {
         if (m_nbStatus[i].neighborMainAddr == TargetAddr)
         {
+            index = i;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool
+RangerNeighborList::FindOnlineMember(Ipv4Address TargetAddr, uint8_t& index)
+{
+    for(std::size_t i = 0; i < m_onlineMemberStatus.size(); i++) {
+        if (m_onlineMemberStatus[i].memberMainAddr == TargetAddr) {
             index = i;
             return true;
         }
@@ -213,7 +212,6 @@ RangerNeighborList::JudgeTwoHopLinkStatus(NeighborStatus::Status oneHopStatus, N
 
 void
 RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
-    header.linkNumber = m_nbStatus.size();
     for(std::size_t i = 0; i < m_nbStatus.size(); i++) {
         if(m_nbStatus[i].status == NeighborStatus::STATUS_NONE) {
             continue;
@@ -223,6 +221,7 @@ RangerNeighborList::GetNeighborNodeInfo(MessageHeader::NodeInfo& header) {
         linkMsg.linkStatus = m_nbStatus[i].status;
         header.linkMessages.push_back(linkMsg);
     }
+    header.linkNumber = header.linkMessages.size();
 }
 
 void
@@ -567,7 +566,7 @@ RangerNeighborList::GetAckNeighbor(Ipv4Address srcAddr) const
 #elif 1 // 选择策略 III: 选择LQI最好的节点
 
     uint8_t bestLqi = 0; // 初始化最好的链路质量值
-    for (int idx = 0; idx < targetAddr.size(); ++idx)
+    for (size_t idx = 0; idx < targetAddr.size(); ++idx)
     {
         if (targetLqi[idx] > bestLqi)
         {

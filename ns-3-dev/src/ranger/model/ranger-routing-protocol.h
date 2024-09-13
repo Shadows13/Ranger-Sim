@@ -39,6 +39,8 @@
 namespace ns3
 {
 
+#define ONLINE_MEMBER_CHECK_SWITCH 0
+
 typedef Callback<void, ranger::McpsDataRequestParams, Ptr<Packet>> RangerRoutingProtocolSendCallback;
 typedef Callback<void, Ipv4Address, Ipv4Address, uint8_t, Time> RangerRoutingProtocolReceiveTraceCallback;
 typedef Callback<void, Ipv4Address, Ipv4Address, uint8_t, Time> RangerRoutingProtocolSendTraceCallback;
@@ -177,8 +179,14 @@ class RangerRoutingProtocol : public Object
     void NodeInfoTimerExpire();
     void SendNodeInfo();
 
-    // For Testing
-    //Ptr<Packet> m_txPacket;
+    /**
+     * \brief Sends a MemberHeartbeat message and reschedules the MemberHeartbeat timer.
+     */
+    Time m_memberHeartbeatInterval;
+    Timer m_memberHeartbeatTimer;
+    void MemberHeartbeatExpire();
+    void SendMemberHeartbeat();
+    void ForwardMemberHeartbeat(MessageHeader msg);
 };
 
 

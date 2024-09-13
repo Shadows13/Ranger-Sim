@@ -122,6 +122,12 @@ struct NeighborStatus
     }
 };
 
+struct OnlineMemberStatus
+{
+    Ipv4Address memberMainAddr;
+    Time refreshTime;
+};
+
 inline bool
 operator==(const NeighborStatus& a, const NeighborStatus& b)
 {
@@ -141,7 +147,7 @@ operator<<(std::ostream& os, const NeighborStatus& tuple)
 class RangerNeighborList
 {
   public:
-    RangerNeighborList(Time refreshInterval);
+    RangerNeighborList(Time refreshInterval, Time onlineMemberRefreshInterval);
     ~RangerNeighborList();
 
   
@@ -149,8 +155,10 @@ class RangerNeighborList
 
     Ipv4Address m_mainAddr;
     std::vector<NeighborStatus> m_nbStatus;
+    std::vector<OnlineMemberStatus> m_onlineMemberStatus;
     // to judge whethe nodeinfo packet arrive?
     Time m_refreshInterval;
+    Time m_onlineMemberRefreshInterval;
 
     // manage neighbor;
   public:
@@ -166,6 +174,19 @@ class RangerNeighborList
      * \param nodeinfoHdr the nodeinfo header.
      */
     void RefreshNeighborNodeStatus(void);
+    /**
+     * Receive a MemberHeartbeat Packet & Update the OnlineMember Status.
+     * \param memberHeartbeat the memberHeartbeat header.
+     */
+    void UpdateOnlineMemberStatus(MessageHeader::MemberHeartbeat memberHeartbeatHdr);
+    /**
+     * Judge whether receive the MemberHeartbeat Packet in last interval 
+     *  & remove timeout node
+     * \param memberHeartbeat the memberHeartbeat header.
+     */
+    void RefreshOnlineMemberStatus(void);
+
+    bool isMemberHeartbeatNew(MessageHeader::MemberHeartbeat memberHeartbeatHdr);
 
     // information request
     /**
@@ -174,6 +195,7 @@ class RangerNeighborList
      * \param index target address's index in m_nbStatus.
      */
     bool FindNeighbor(Ipv4Address TargetAddr, uint8_t& index);
+    bool FindOnlineMember(Ipv4Address TargetAddr, uint8_t& index);
 
     bool isEmpty() const {
         return m_nbStatus.empty();

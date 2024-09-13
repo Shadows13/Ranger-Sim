@@ -45,14 +45,16 @@ RangerRoutingProtocol::GetTypeId()
 }
 
 RangerRoutingProtocol::RangerRoutingProtocol()
-    : m_nbList(Seconds(1.0)),
+    : m_nbList(Seconds(1.0), Seconds(5.0)),
       m_audioManagement(),
       m_queuedMessagesTimer(Timer::CANCEL_ON_DESTROY),
-      m_nodeInfoTimer(Timer::CANCEL_ON_DESTROY)
+      m_nodeInfoTimer(Timer::CANCEL_ON_DESTROY),
+      m_memberHeartbeatTimer(Timer::CANCEL_ON_DESTROY)
 {
     NS_LOG_FUNCTION(this);
     m_queuedMessagesInterval = MilliSeconds(1.0);
     m_nodeInfoInterval = Seconds(1.0);
+    m_memberHeartbeatInterval = Seconds(5.0);
 }
 
 RangerRoutingProtocol::~RangerRoutingProtocol()
@@ -72,6 +74,9 @@ RangerRoutingProtocol::DoInitialize()
 
     m_nodeInfoTimer.SetFunction(&RangerRoutingProtocol::NodeInfoTimerExpire, this);
     m_nodeInfoTimer.Schedule(Seconds(1.0 + randomTime->GetValue()));
+
+    m_memberHeartbeatTimer.SetFunction(&RangerRoutingProtocol::MemberHeartbeatExpire, this);
+    m_memberHeartbeatTimer.Schedule(Seconds(5.0 + randomTime->GetValue()));
 }
 void
 RangerRoutingProtocol::DoDispose()
@@ -149,6 +154,22 @@ RangerRoutingProtocol::ReceivePacket(ranger::McpsDataIndicationParams receivePar
             // if(isForwardJudge_Hivemesh(msgHdr)) {
             //     ForwardAudioDataRequest(msgHdr);
             // }
+        }
+        break;
+    }
+    case MessageHeader::MEMBERHEARTBEAT_MESSAGE:
+    {
+        if(m_nbList.isMemberHeartbeatNew(msgHdr.GetMemberHeartbeat())) {
+            std::ostringstream oss;
+            oss << "[NWK][" << m_mainAddr << "](R-AT +" << Simulator::Now().GetMilliSeconds() << "ms)";
+            msgHdr.Print(oss); // 将输出重定向到字符串流
+            NS_LOG_INFO(oss.str()); // 将捕获的字符串输出到日志
+
+            // 更新在线成员状态
+            m_nbList.UpdateOnlineMemberStatus(msgHdr.GetMemberHeartbeat());
+
+            // 转发MemberHeartbeat
+            ForwardMemberHeartbeat(msgHdr);
         }
         break;
     }
@@ -408,6 +429,17 @@ RangerRoutingProtocol::SendQueuedMessages() {
             m_sendTraceCallback(m_mainAddr, messageIter->hdr.GetAudioData().OriAddr, messageIter->hdr.GetAudioData().AudioSeq, Simulator::Now());
             break;
         }
+        case MessageHeader::MEMBERHEARTBEAT_MESSAGE: {
+            std::ostringstream oss;
+            oss << "[NWK][" << m_mainAddr << "](S-AT +" << Simulator::Now().GetMilliSeconds() << "ms)";
+            messageIter->hdr.Print(oss); // 将输出重定向到字符串流
+            NS_LOG_INFO(oss.str()); // 将捕获的字符串输出到日志
+
+            Ptr<Packet> p = Create<Packet>(0);
+            p->AddHeader(messageIter->hdr);
+            SendPacket(messageIter->params, p);
+            break;
+        }
         
         default:
             break;
@@ -432,6 +464,8 @@ RangerRoutingProtocol::SendNodeInfo() {
     msg.SetSrcAddress(m_mainAddr);
     
     MessageHeader::NodeInfo& nodeinfoHdr = msg.GetNodeInfo();
+    nodeinfoHdr.linkNumber = 0;
+    nodeinfoHdr.linkMessages.clear();
     m_nbList.GetNeighborNodeInfo(nodeinfoHdr);
 
     msg.SetMessageLength(msg.GetSerializedSize());
@@ -459,4 +493,65 @@ RangerRoutingProtocol::NodeInfoTimerExpire() {
     m_nodeInfoTimer.Schedule(m_nodeInfoInterval);
 }
 
+void
+RangerRoutingProtocol::ForwardMemberHeartbeat(MessageHeader msg) {
+    NS_LOG_FUNCTION(this);
+    MessageHeaderElement payload;
+
+    msg.SetSrcAddress(m_mainAddr);
+
+    MessageHeader::MemberHeartbeat& memberHeartbeatHdr = msg.GetMemberHeartbeat();
+    memberHeartbeatHdr.roadNum++;
+    memberHeartbeatHdr.roadAddr.push_back(m_mainAddr);
+
+    msg.SetMessageLength(msg.GetSerializedSize());
+
+    ranger::McpsDataRequestParams sendParams;
+    sendParams.m_dstAddr = Ipv4Address("255.255.255.255");
+    sendParams.m_msduHandle = 0;
+    sendParams.m_txOptions = 0b010;
+
+    payload.hdr = msg;
+    payload.params = sendParams;
+
+    // Send the message
+    EnqueueMessage(payload, Seconds(0));
+}
+
+void
+RangerRoutingProtocol::SendMemberHeartbeat() {
+    NS_LOG_FUNCTION(this);
+    MessageHeaderElement payload;
+
+    // Create a new message hdr
+    MessageHeader msg;
+    msg.SetMessageType(MessageHeader::MEMBERHEARTBEAT_MESSAGE);
+    msg.SetSrcAddress(m_mainAddr);
+    
+    MessageHeader::MemberHeartbeat& memberHeartbeatHdr = msg.GetMemberHeartbeat();
+    memberHeartbeatHdr.mainAddr = m_mainAddr;
+    memberHeartbeatHdr.roadNum = 0;
+    memberHeartbeatHdr.roadAddr.clear();
+
+    msg.SetMessageLength(msg.GetSerializedSize());
+
+    ranger::McpsDataRequestParams sendParams;
+    sendParams.m_dstAddr = Ipv4Address("255.255.255.255");
+    sendParams.m_msduHandle = 0;
+    sendParams.m_txOptions = 0b010;
+
+    payload.hdr = msg;
+    payload.params = sendParams;
+
+    // Send the message
+    EnqueueMessage(payload, Seconds(0));
+}
+
+void
+RangerRoutingProtocol::MemberHeartbeatExpire() {
+    #if ONLINE_MEMBER_CHECK_SWITCH
+    SendMemberHeartbeat();
+    #endif
+    m_memberHeartbeatTimer.Schedule(m_memberHeartbeatInterval);
+}
 } // namespace ns3
